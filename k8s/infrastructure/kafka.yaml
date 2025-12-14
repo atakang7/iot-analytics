@@ -1,0 +1,177 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: zookeeper-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafka-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: zookeeper-config
+data:
+  zookeeper.properties: |
+    dataDir=/tmp/zookeeper
+    clientPort=2181
+    maxClientCnxns=0
+    admin.enableServer=false
+    4lw.commands.whitelist=*
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zookeeper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zookeeper
+  template:
+    metadata:
+      labels:
+        app: zookeeper
+    spec:
+      containers:
+        - name: zookeeper
+          image: quay.io/strimzi/kafka:latest-kafka-3.6.0
+          command:
+            - sh
+            - -c
+            - |
+              cp /tmp/config/zookeeper.properties /tmp/zookeeper.properties
+              bin/zookeeper-server-start.sh /tmp/zookeeper.properties
+          ports:
+            - containerPort: 2181
+          env:
+            - name: LOG_DIR
+              value: /tmp/logs
+            - name: KAFKA_LOG4J_OPTS
+              value: " "
+          volumeMounts:
+            - name: data
+              mountPath: /tmp/zookeeper
+            - name: config
+              mountPath: /tmp/config
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: zookeeper-pvc
+        - name: config
+          configMap:
+            name: zookeeper-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zookeeper
+spec:
+  selector:
+    app: zookeeper
+  ports:
+    - port: 2181
+      targetPort: 2181
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-config
+data:
+  server.properties: |
+    broker.id=0
+    listeners=PLAINTEXT://:9092
+    advertised.listeners=PLAINTEXT://kafka:9092
+    zookeeper.connect=zookeeper:2181
+    log.dirs=/tmp/kafka-logs/data
+    num.partitions=3
+    auto.create.topics.enable=true
+    log.retention.hours=168
+    offsets.topic.replication.factor=1
+    transaction.state.log.replication.factor=1
+    transaction.state.log.min.isr=1
+  log4j.properties: |
+    log4j.rootLogger=INFO, stdout
+    log4j.appender.stdout=org.apache.log4j.ConsoleAppender
+    log4j.appender.stdout.layout=org.apache.log4j.PatternLayout
+    log4j.appender.stdout.layout.ConversionPattern=[%d] %p %m (%c)%n
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: quay.io/strimzi/kafka:latest-kafka-3.6.0
+          command:
+            - sh
+            - -c
+            - |
+              cp /tmp/config/server.properties /tmp/server.properties
+              export KAFKA_LOG4J_OPTS="-Dlog4j.configuration=file:/tmp/config/log4j.properties"
+              bin/kafka-server-start.sh /tmp/server.properties
+          ports:
+            - containerPort: 9092
+          env:
+            - name: LOG_DIR
+              value: /tmp/logs
+          volumeMounts:
+            - name: data
+              mountPath: /tmp/kafka-logs
+            - name: config
+              mountPath: /tmp/config
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kafka-pvc
+        - name: config
+          configMap:
+            name: kafka-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+spec:
+  selector:
+    app: kafka
+  ports:
+    - port: 9092
+      targetPort: 9092

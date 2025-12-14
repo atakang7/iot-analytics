@@ -1,0 +1,126 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: log-collector
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: log-collector
+rules:
+- apiGroups: [""]
+  resources:
+  - pods
+  - pods/log
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: log-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: log-collector
+subjects:
+- kind: ServiceAccount
+  name: log-collector
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: log-collector-script
+data:
+  collector.sh: |
+    #!/bin/bash
+    LOKI_URL="http://loki:3100/loki/api/v1/push"
+    NAMESPACE="${NAMESPACE:-atakangul-dev}"
+    
+    # Function to push logs to Loki
+    push_to_loki() {
+      local app="$1"
+      local pod="$2"
+      local log_line="$3"
+      local timestamp=$(date +%s)000000000
+      
+      # Escape special characters for JSON
+      log_line=$(echo "$log_line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
+      
+      curl -s -X POST "$LOKI_URL" \
+        -H "Content-Type: application/json" \
+        -d "{\"streams\": [{\"stream\": {\"app\": \"$app\", \"pod\": \"$pod\", \"namespace\": \"$NAMESPACE\"}, \"values\": [[\"$timestamp\", \"$log_line\"]]}]}" > /dev/null 2>&1
+    }
+    
+    # Tail logs from pods
+    tail_pod_logs() {
+      local pod="$1"
+      local app="$2"
+      echo "Starting log collection for pod: $pod (app: $app)"
+      
+      kubectl logs -f "$pod" -n "$NAMESPACE" 2>/dev/null | while read -r line; do
+        push_to_loki "$app" "$pod" "$line"
+      done
+    }
+    
+    # Main loop - discover and tail pods
+    echo "Log collector starting..."
+    while true; do
+      # Get running pods with app labels
+      pods=$(kubectl get pods -n "$NAMESPACE" -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.metadata.name},{.metadata.labels.app}{"\n"}{end}' 2>/dev/null)
+      
+      for pod_info in $pods; do
+        pod=$(echo "$pod_info" | cut -d',' -f1)
+        app=$(echo "$pod_info" | cut -d',' -f2)
+        
+        if [ -n "$pod" ] && [ -n "$app" ]; then
+          # Check if already tailing this pod
+          if ! pgrep -f "kubectl logs -f $pod" > /dev/null 2>&1; then
+            tail_pod_logs "$pod" "$app" &
+          fi
+        fi
+      done
+      
+      sleep 30
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: log-collector
+  labels:
+    app: log-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: log-collector
+  template:
+    metadata:
+      labels:
+        app: log-collector
+    spec:
+      serviceAccountName: log-collector
+      containers:
+      - name: log-collector
+        image: bitnami/kubectl:latest
+        command: ["/bin/bash", "/scripts/collector.sh"]
+        env:
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: script
+          mountPath: /scripts
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+      volumes:
+      - name: script
+        configMap:
+          name: log-collector-script
+          defaultMode: 0755

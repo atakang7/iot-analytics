@@ -9,6 +9,47 @@ spec:
     requests:
       storage: 1Gi
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      - job_name: 'device-registry'
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['device-registry:8080']
+        relabel_configs:
+          - target_label: app
+            replacement: device-registry
+      - job_name: 'ingestion'
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ['ingestion:8081']
+        relabel_configs:
+          - target_label: app
+            replacement: ingestion
+      - job_name: 'analytics'
+        metrics_path: /metrics
+        static_configs:
+          - targets: ['analytics:8082']
+        relabel_configs:
+          - target_label: app
+            replacement: analytics
+      - job_name: 'kafka'
+        static_configs:
+          - targets: ['kafka:9092']
+        relabel_configs:
+          - target_label: app
+            replacement: kafka
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,9 +67,14 @@ spec:
       containers:
       - name: prometheus
         image: prom/prometheus:latest
+        args:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus'
         ports:
         - containerPort: 9090
         volumeMounts:
+        - name: config
+          mountPath: /etc/prometheus
         - name: data
           mountPath: /prometheus
         resources:
@@ -39,6 +85,9 @@ spec:
             cpu: 500m
             memory: 512Mi
       volumes:
+      - name: config
+        configMap:
+          name: prometheus-config
       - name: data
         persistentVolumeClaim:
           claimName: prometheus-data
@@ -53,3 +102,19 @@ spec:
   ports:
   - port: 9090
     targetPort: 9090
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+spec:
+  to:
+    kind: Service
+    name: prometheus
+  port:
+    targetPort: 9090
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
