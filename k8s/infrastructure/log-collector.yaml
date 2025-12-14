@@ -43,12 +43,10 @@ data:
       local log_line="$3"
       local timestamp=$(date +%s)000000000
       
-      # Escape special characters for JSON
-      log_line=$(echo "$log_line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
-      
+      # Forward log line as-is (assume it's already JSON-formatted by the app)
       curl -s -X POST "$LOKI_URL" \
         -H "Content-Type: application/json" \
-        -d "{\"streams\": [{\"stream\": {\"app\": \"$app\", \"pod\": \"$pod\", \"namespace\": \"$NAMESPACE\"}, \"values\": [[\"$timestamp\", \"$log_line\"]]}]}" > /dev/null 2>&1
+        -d "{\"streams\": [{\"stream\": {\"app\": \"$app\", \"pod\": \"$pod\", \"namespace\": \"$NAMESPACE\"}, \"values\": [[\"$timestamp\", $log_line]]}]}" > /dev/null 2>&1
     }
     
     # Tail logs from pods
@@ -115,10 +113,10 @@ spec:
         resources:
           requests:
             cpu: 50m
-            memory: 64Mi
+            memory: 128Mi
           limits:
             cpu: 200m
-            memory: 256Mi
+            memory: 384Mi
       volumes:
       - name: script
         configMap:
