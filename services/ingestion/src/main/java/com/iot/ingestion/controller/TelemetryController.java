@@ -1,85 +1,87 @@
 package com.iot.ingestion.controller;
 
-import com.iot.ingestion.dto.*;
+import com.iot.common.dto.telemetry.BatchTelemetryRequest;
+import com.iot.common.dto.telemetry.BatchTelemetryResponse;
+import com.iot.common.dto.telemetry.TelemetryRequest;
+import com.iot.common.dto.telemetry.TelemetryResponse;
 import com.iot.ingestion.service.TelemetryService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.web.PageableDefault;
-import org.springframework.format.annotation.DateTimeFormat;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Mono;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.UUID;
-
+/**
+ * REST controller for ingesting telemetry data from IoT devices.
+ * 
+ * Endpoints:
+ * - POST /api/v1/telemetry - Single telemetry reading
+ * - POST /api/v1/telemetry/batch - Batch of telemetry readings
+ */
 @RestController
 @RequestMapping("/api/v1/telemetry")
-@RequiredArgsConstructor
-@Tag(name = "Telemetry Ingestion", description = "APIs for ingesting and querying IoT telemetry data")
 public class TelemetryController {
+
+    private static final Logger log = LoggerFactory.getLogger(TelemetryController.class);
 
     private final TelemetryService telemetryService;
 
-    @PostMapping
-    @Operation(summary = "Ingest telemetry", description = "Ingest a single telemetry data point")
-    public ResponseEntity<TelemetryResponse> ingestTelemetry(@Valid @RequestBody TelemetryRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(telemetryService.ingestTelemetry(request));
+    public TelemetryController(TelemetryService telemetryService) {
+        this.telemetryService = telemetryService;
     }
 
-    @PostMapping("/batch")
-    @Operation(summary = "Ingest batch telemetry", description = "Ingest multiple telemetry data points in a batch")
-    public ResponseEntity<BatchTelemetryResponse> ingestBatch(@Valid @RequestBody BatchTelemetryRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(telemetryService.ingestBatch(request));
-    }
-
-    @GetMapping("/device/{deviceId}")
-    @Operation(summary = "Get device telemetry", description = "Get telemetry data for a specific device")
-    public ResponseEntity<Page<TelemetryResponse>> getDeviceTelemetry(
-            @PathVariable UUID deviceId,
-            @PageableDefault(size = 50) Pageable pageable) {
-        return ResponseEntity.ok(telemetryService.getTelemetryByDevice(deviceId, pageable));
-    }
-
-    @GetMapping("/device/{deviceId}/range")
-    @Operation(summary = "Get telemetry by time range", description = "Get telemetry data for a device within a time range")
-    public ResponseEntity<List<TelemetryResponse>> getTelemetryByRange(
-            @PathVariable UUID deviceId,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant start,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant end) {
-        return ResponseEntity.ok(telemetryService.getTelemetryByDeviceAndTimeRange(deviceId, start, end));
-    }
-
-    @GetMapping("/device/{deviceId}/metrics")
-    @Operation(summary = "Get device metrics", description = "Get list of metrics available for a device")
-    public ResponseEntity<List<String>> getDeviceMetrics(@PathVariable UUID deviceId) {
-        return ResponseEntity.ok(telemetryService.getMetricsByDevice(deviceId));
-    }
-
-    @GetMapping("/device/{deviceId}/stats")
-    @Operation(summary = "Get telemetry statistics", description = "Get statistical summary for a device metric")
-    public ResponseEntity<TelemetryStatsResponse> getTelemetryStats(
-            @PathVariable UUID deviceId,
-            @RequestParam String metricName,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant start,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant end) {
+    /**
+     * Ingest a single telemetry reading.
+     */
+    @PostMapping(
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public Mono<ResponseEntity<TelemetryResponse>> ingestTelemetry(
+            @Valid @RequestBody TelemetryRequest request) {
         
-        // Default to last 24 hours if not specified
-        if (start == null) {
-            start = Instant.now().minus(24, ChronoUnit.HOURS);
-        }
-        if (end == null) {
-            end = Instant.now();
-        }
+        log.debug("Received telemetry: device={}, sensor={}, type={}",
+                request.deviceId(), request.sensorId(), request.sensorType());
+
+        return telemetryService.processTelemetry(request)
+                .map(response -> {
+                    if ("OK".equals(response.status())) {
+                        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
+                    } else {
+                        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+                    }
+                });
+    }
+
+    /**
+     * Ingest a batch of telemetry readings.
+     */
+    @PostMapping(
+            path = "/batch",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public Mono<ResponseEntity<BatchTelemetryResponse>> ingestBatch(
+            @Valid @RequestBody BatchTelemetryRequest request) {
         
-        return ResponseEntity.ok(telemetryService.getStats(deviceId, metricName, start, end));
+        log.debug("Received batch telemetry: count={}", request.size());
+
+        return telemetryService.processBatch(request)
+                .map(response -> switch (response.status()) {
+                    case "OK" -> ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
+                    case "PARTIAL" -> ResponseEntity.status(HttpStatus.MULTI_STATUS).body(response);
+                    default -> ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+                });
+    }
+
+    /**
+     * Health check endpoint for simple connectivity test.
+     */
+    @GetMapping("/health")
+    public Mono<ResponseEntity<String>> health() {
+        return Mono.just(ResponseEntity.ok("OK"));
     }
 }

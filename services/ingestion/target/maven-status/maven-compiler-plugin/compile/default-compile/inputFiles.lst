@@ -1,0 +1,7 @@
+/home/zperson/iot-analytics/services/ingestion/src/main/java/com/iot/ingestion/exception/GlobalExceptionHandler.java
+/home/zperson/iot-analytics/services/ingestion/src/main/java/com/iot/ingestion/config/JacksonConfig.java
+/home/zperson/iot-analytics/services/ingestion/src/main/java/com/iot/ingestion/controller/TelemetryController.java
+/home/zperson/iot-analytics/services/ingestion/src/main/java/com/iot/ingestion/service/TelemetryService.java
+/home/zperson/iot-analytics/services/ingestion/src/main/java/com/iot/ingestion/IngestionApplication.java
+/home/zperson/iot-analytics/services/ingestion/src/main/java/com/iot/ingestion/exception/ErrorResponse.java
+/home/zperson/iot-analytics/services/ingestion/src/main/java/com/iot/ingestion/config/KafkaConfig.java

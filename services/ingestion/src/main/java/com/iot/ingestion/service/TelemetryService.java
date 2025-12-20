@@ -1,231 +1,186 @@
 package com.iot.ingestion.service;
 
-import com.iot.ingestion.config.KafkaConfig;
-import com.iot.ingestion.dto.*;
-import com.iot.ingestion.model.TelemetryData;
-import com.iot.ingestion.repository.TelemetryRepository;
+import com.iot.common.dto.telemetry.AnalyticsMessage;
+import com.iot.common.dto.telemetry.BatchTelemetryRequest;
+import com.iot.common.dto.telemetry.BatchTelemetryResponse;
+import com.iot.common.dto.telemetry.TelemetryRequest;
+import com.iot.common.dto.telemetry.TelemetryResponse;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.kafka.core.KafkaTemplate;
+import io.micrometer.core.instrument.Timer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.SendResult;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import java.util.concurrent.CompletableFuture;
 
+/**
+ * Service for processing telemetry data and publishing to Kafka.
+ */
 @Service
-@Slf4j
 public class TelemetryService {
 
-    private final TelemetryRepository telemetryRepository;
-    private final KafkaTemplate<String, Object> kafkaTemplate;
-    private final DeviceRegistryClient deviceRegistryClient;
-    private final Counter telemetryReceivedCounter;
-    private final Counter telemetryProcessedCounter;
-    private final Counter telemetryRejectedCounter;
+    private static final Logger log = LoggerFactory.getLogger(TelemetryService.class);
 
-    @Value("${ingestion.batch.size:100}")
-    private int batchSize;
+    private final KafkaTemplate<String, AnalyticsMessage> kafkaTemplate;
+    private final String topicName;
+    
+    // Metrics
+    private final Counter messagesReceived;
+    private final Counter messagesPublished;
+    private final Counter messagesFailed;
+    private final Timer publishLatency;
 
-    public TelemetryService(TelemetryRepository telemetryRepository,
-                           KafkaTemplate<String, Object> kafkaTemplate,
-                           DeviceRegistryClient deviceRegistryClient,
-                           MeterRegistry meterRegistry) {
-        this.telemetryRepository = telemetryRepository;
+    public TelemetryService(
+            KafkaTemplate<String, AnalyticsMessage> kafkaTemplate,
+            @Value("${app.kafka.topic.telemetry}") String topicName,
+            MeterRegistry meterRegistry) {
         this.kafkaTemplate = kafkaTemplate;
-        this.deviceRegistryClient = deviceRegistryClient;
+        this.topicName = topicName;
         
-        this.telemetryReceivedCounter = Counter.builder("telemetry.received")
-                .description("Number of telemetry data points received")
+        // Initialize metrics
+        this.messagesReceived = Counter.builder("ingestion.messages.received")
+                .description("Number of telemetry messages received")
                 .register(meterRegistry);
-        this.telemetryProcessedCounter = Counter.builder("telemetry.processed")
-                .description("Number of telemetry data points processed")
+        
+        this.messagesPublished = Counter.builder("ingestion.messages.published")
+                .description("Number of messages successfully published to Kafka")
                 .register(meterRegistry);
-        this.telemetryRejectedCounter = Counter.builder("telemetry.rejected")
-                .description("Number of telemetry data points rejected")
+        
+        this.messagesFailed = Counter.builder("ingestion.messages.failed")
+                .description("Number of messages that failed to publish")
+                .register(meterRegistry);
+        
+        this.publishLatency = Timer.builder("ingestion.publish.latency")
+                .description("Time taken to publish message to Kafka")
                 .register(meterRegistry);
     }
 
-    @Transactional
-    public TelemetryResponse ingestTelemetry(TelemetryRequest request) {
-        log.debug("Ingesting telemetry for device: {}", request.getDeviceId());
-        telemetryReceivedCounter.increment();
-
-        // Validate device exists and update heartbeat
-        try {
-            deviceRegistryClient.sendHeartbeat(request.getDeviceId());
-        } catch (Exception e) {
-            log.warn("Failed to send heartbeat to device registry for device: {}", request.getDeviceId(), e);
+    /**
+     * Process a single telemetry request.
+     */
+    public Mono<TelemetryResponse> processTelemetry(TelemetryRequest request) {
+        messagesReceived.increment();
+        
+        // Validate value type matches sensor type
+        if (!request.isValueTypeValid()) {
+            messagesFailed.increment();
+            return Mono.just(TelemetryResponse.error(
+                request.deviceId(),
+                request.sensorId(),
+                "Value type does not match sensor type: " + request.sensorType()
+            ));
         }
 
-        TelemetryData telemetry = TelemetryData.builder()
-                .deviceId(request.getDeviceId())
-                .metricName(request.getMetricName())
-                .metricValue(request.getMetricValue())
-                .unit(request.getUnit())
-                .timestamp(request.getTimestamp() != null ? request.getTimestamp() : Instant.now())
-                .build();
+        AnalyticsMessage message = request.toAnalyticsMessage();
+        String key = buildMessageKey(message);
 
-        TelemetryData saved = telemetryRepository.save(telemetry);
-        
-        // Send to analytics queue
-        sendToAnalytics(saved);
-        
-        telemetryProcessedCounter.increment();
-        return TelemetryResponse.fromEntity(saved);
+        return publishToKafka(key, message)
+                .map(result -> {
+                    messagesPublished.increment();
+                    log.debug("Published telemetry for device={}, sensor={}, partition={}, offset={}",
+                            message.deviceId(), message.sensorId(),
+                            result.getRecordMetadata().partition(),
+                            result.getRecordMetadata().offset());
+                    return TelemetryResponse.success(request.deviceId(), request.sensorId());
+                })
+                .onErrorResume(error -> {
+                    messagesFailed.increment();
+                    log.error("Failed to publish telemetry for device={}, sensor={}: {}",
+                            message.deviceId(), message.sensorId(), error.getMessage());
+                    return Mono.just(TelemetryResponse.error(
+                            request.deviceId(),
+                            request.sensorId(),
+                            "Failed to publish: " + error.getMessage()
+                    ));
+                });
     }
 
-    @Transactional
-    public BatchTelemetryResponse ingestBatch(BatchTelemetryRequest request) {
-        log.info("Ingesting batch of {} telemetry points", request.getData().size());
+    /**
+     * Process a batch of telemetry requests.
+     */
+    public Mono<BatchTelemetryResponse> processBatch(BatchTelemetryRequest batchRequest) {
+        messagesReceived.increment(batchRequest.size());
+
+        List<BatchTelemetryResponse.BatchError> errors = new ArrayList<>();
         
-        int received = request.getData().size();
-        int accepted = 0;
-        int rejected = 0;
-        
-        List<TelemetryData> telemetryList = new ArrayList<>();
-        
-        for (TelemetryRequest item : request.getData()) {
-            try {
-                telemetryReceivedCounter.increment();
-                
-                TelemetryData telemetry = TelemetryData.builder()
-                        .deviceId(item.getDeviceId())
-                        .metricName(item.getMetricName())
-                        .metricValue(item.getMetricValue())
-                        .unit(item.getUnit())
-                        .timestamp(item.getTimestamp() != null ? item.getTimestamp() : Instant.now())
-                        .build();
-                
-                telemetryList.add(telemetry);
-                accepted++;
-            } catch (Exception e) {
-                log.error("Failed to process telemetry item: {}", e.getMessage());
-                rejected++;
-                telemetryRejectedCounter.increment();
-            }
-        }
-        
-        // Batch save
-        List<TelemetryData> savedList = telemetryRepository.saveAll(telemetryList);
-        
-        // Send all to analytics
-        savedList.forEach(this::sendToAnalytics);
-        
-        telemetryProcessedCounter.increment(accepted);
-        
-        // Update device heartbeats
-        savedList.stream()
-                .map(TelemetryData::getDeviceId)
-                .distinct()
-                .forEach(deviceId -> {
-                    try {
-                        deviceRegistryClient.sendHeartbeat(deviceId);
-                    } catch (Exception e) {
-                        log.warn("Failed to send heartbeat for device: {}", deviceId);
+        return Flux.fromIterable(batchRequest.readings())
+                .index()
+                .flatMap(tuple -> {
+                    int index = tuple.getT1().intValue();
+                    TelemetryRequest request = tuple.getT2();
+                    
+                    // Validate
+                    if (!request.isValueTypeValid()) {
+                        errors.add(new BatchTelemetryResponse.BatchError(
+                                index,
+                                request.deviceId(),
+                                "Value type does not match sensor type"
+                        ));
+                        messagesFailed.increment();
+                        return Mono.empty();
+                    }
+
+                    AnalyticsMessage message = request.toAnalyticsMessage();
+                    String key = buildMessageKey(message);
+
+                    return publishToKafka(key, message)
+                            .doOnSuccess(r -> messagesPublished.increment())
+                            .onErrorResume(error -> {
+                                errors.add(new BatchTelemetryResponse.BatchError(
+                                        index,
+                                        request.deviceId(),
+                                        error.getMessage()
+                                ));
+                                messagesFailed.increment();
+                                return Mono.empty();
+                            });
+                })
+                .collectList()
+                .map(results -> {
+                    int total = batchRequest.size();
+                    int accepted = total - errors.size();
+                    
+                    if (errors.isEmpty()) {
+                        return BatchTelemetryResponse.success(total);
+                    } else if (accepted > 0) {
+                        return BatchTelemetryResponse.partial(total, accepted, errors);
+                    } else {
+                        return BatchTelemetryResponse.error(total, "All messages failed");
                     }
                 });
-        
-        return BatchTelemetryResponse.builder()
-                .received(received)
-                .accepted(accepted)
-                .rejected(rejected)
-                .message(String.format("Processed %d of %d telemetry points", accepted, received))
-                .build();
     }
 
-    public Page<TelemetryResponse> getTelemetryByDevice(UUID deviceId, Pageable pageable) {
-        return telemetryRepository.findByDeviceId(deviceId, pageable)
-                .map(TelemetryResponse::fromEntity);
-    }
-
-    public List<TelemetryResponse> getTelemetryByDeviceAndTimeRange(UUID deviceId, Instant start, Instant end) {
-        return telemetryRepository.findByDeviceIdAndTimestampBetween(deviceId, start, end)
-                .stream()
-                .map(TelemetryResponse::fromEntity)
-                .collect(Collectors.toList());
-    }
-
-    public List<String> getMetricsByDevice(UUID deviceId) {
-        return telemetryRepository.findDistinctMetricNamesByDeviceId(deviceId);
-    }
-
-    public TelemetryStatsResponse getStats(UUID deviceId, String metricName, Instant start, Instant end) {
-        Double avg = telemetryRepository.getAverageMetricValue(deviceId, metricName, start, end);
-        Double max = telemetryRepository.getMaxMetricValue(deviceId, metricName, start, end);
-        Double min = telemetryRepository.getMinMetricValue(deviceId, metricName, start, end);
-        
-        return TelemetryStatsResponse.builder()
-                .deviceId(deviceId)
-                .metricName(metricName)
-                .startTime(start)
-                .endTime(end)
-                .average(avg)
-                .max(max)
-                .min(min)
-                .build();
-    }
-
-    private void sendToAnalytics(TelemetryData telemetry) {
-        try {
-            AnalyticsMessage message = AnalyticsMessage.builder()
-                    .id(telemetry.getId())
-                    .deviceId(telemetry.getDeviceId())
-                    .metricName(telemetry.getMetricName())
-                    .metricValue(telemetry.getMetricValue())
-                    .unit(telemetry.getUnit())
-                    .timestamp(telemetry.getTimestamp())
-                    .messageType("TELEMETRY")
-                    .build();
+    /**
+     * Publish message to Kafka with timing.
+     */
+    private Mono<SendResult<String, AnalyticsMessage>> publishToKafka(String key, AnalyticsMessage message) {
+        return Mono.fromFuture(() -> {
+            Timer.Sample sample = Timer.start();
+            CompletableFuture<SendResult<String, AnalyticsMessage>> future = 
+                    kafkaTemplate.send(topicName, key, message);
             
-            // Use deviceId as key for partition ordering (same device = same partition)
-            kafkaTemplate.send(
-                    KafkaConfig.TELEMETRY_TOPIC,
-                    telemetry.getDeviceId().toString(),
-                    message
-            );
-            log.debug("Sent telemetry to Kafka: {}", telemetry.getId());
-        } catch (Exception e) {
-            log.error("Failed to send telemetry to Kafka: {}", e.getMessage());
-        }
+            future.whenComplete((result, error) -> {
+                sample.stop(publishLatency);
+            });
+            
+            return future;
+        });
     }
 
-    @Scheduled(fixedRateString = "${ingestion.batch.interval-ms:5000}")
-    @Transactional
-    public void processUnprocessedData() {
-        List<TelemetryData> unprocessed = telemetryRepository.findUnprocessedData(
-                PageRequest.of(0, batchSize));
-        
-        if (!unprocessed.isEmpty()) {
-            log.info("Processing {} unprocessed telemetry records", unprocessed.size());
-            
-            List<UUID> ids = unprocessed.stream()
-                    .map(TelemetryData::getId)
-                    .collect(Collectors.toList());
-            
-            // Send to analytics
-            unprocessed.forEach(this::sendToAnalytics);
-            
-            // Mark as processed
-            telemetryRepository.markAsProcessed(ids);
-        }
-    }
-
-    @Scheduled(cron = "0 0 2 * * ?") // Run at 2 AM daily
-    @Transactional
-    public void cleanupOldData() {
-        Instant cutoff = Instant.now().minus(30, ChronoUnit.DAYS);
-        int deleted = telemetryRepository.deleteOldProcessedData(cutoff);
-        log.info("Cleaned up {} old telemetry records", deleted);
+    /**
+     * Build Kafka message key for partitioning.
+     * Using deviceId ensures all messages from same device go to same partition,
+     * maintaining ordering per device.
+     */
+    private String buildMessageKey(AnalyticsMessage message) {
+        return message.deviceId();
     }
 }

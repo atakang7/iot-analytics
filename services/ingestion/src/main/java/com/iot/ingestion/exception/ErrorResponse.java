@@ -1,24 +1,37 @@
 package com.iot.ingestion.exception;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.Instant;
-import java.util.Map;
+import java.util.List;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class ErrorResponse {
-    
-    private Instant timestamp;
-    private int status;
-    private String error;
-    private String message;
-    private Map<String, String> validationErrors;
+/**
+ * Standard error response format.
+ */
+public record ErrorResponse(
+    @JsonProperty("status")
+    int status,
+
+    @JsonProperty("error")
+    String error,
+
+    @JsonProperty("message")
+    String message,
+
+    @JsonProperty("path")
+    String path,
+
+    @JsonProperty("timestamp")
+    Instant timestamp,
+
+    @JsonProperty("details")
+    List<String> details
+) {
+    public static ErrorResponse of(int status, String error, String message, String path) {
+        return new ErrorResponse(status, error, message, path, Instant.now(), List.of());
+    }
+
+    public static ErrorResponse of(int status, String error, String message, String path, List<String> details) {
+        return new ErrorResponse(status, error, message, path, Instant.now(), details);
+    }
 }

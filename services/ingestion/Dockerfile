@@ -1,39 +1,48 @@
 # Build stage
-FROM maven:3.9-eclipse-temurin-17-alpine AS build
-WORKDIR /app
+FROM eclipse-temurin:17-jdk-alpine AS builder
 
-# Copy pom first for dependency caching
-COPY pom.xml .
+WORKDIR /build
 
-# Download dependencies
-RUN mvn dependency:go-offline -B
+# Install Maven
+RUN apk add --no-cache maven
 
-# Copy source code
-COPY src src
+# Copy common module first and install it
+COPY common/pom.xml common/pom.xml
+COPY common/src common/src
+RUN cd common && mvn clean install -DskipTests -B
 
-# Build the application
-RUN mvn package -DskipTests -B
+# Copy ingestion module
+COPY ingestion/pom.xml ingestion/pom.xml
+COPY ingestion/src ingestion/src
+
+# Build ingestion service
+RUN cd ingestion && mvn clean package -DskipTests -B
 
 # Runtime stage
 FROM eclipse-temurin:17-jre-alpine
+
 WORKDIR /app
 
-# Add non-root user
+# Add non-root user for security
 RUN addgroup -g 1001 -S appgroup && \
     adduser -u 1001 -S appuser -G appgroup
 
 # Copy the built jar
-COPY --from=build /app/target/*.jar app.jar
+COPY --from=builder /build/ingestion/target/*.jar app.jar
 
-# Change ownership
+# Set ownership
 RUN chown -R appuser:appgroup /app
 
 USER appuser
 
-EXPOSE 8081
+# Expose port
+EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8081/actuator/health || exit 1
+    CMD wget -q --spider http://localhost:8080/actuator/health || exit 1
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# JVM options for containers
+ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC"
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]

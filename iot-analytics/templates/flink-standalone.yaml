@@ -1,0 +1,275 @@
+{{- if .Values.flink.enabled }}
+# ============================================================================
+# FLINK STANDALONE DEPLOYMENT
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# STORAGE
+# ----------------------------------------------------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: flink-pvc
+  labels:
+    app: flink
+spec:
+  accessModes:
+    - {{ .Values.flink.storage.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.flink.storage.size }}
+
+---
+# ----------------------------------------------------------------------------
+# FLINK CONFIGURATION
+# ----------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-config
+  labels:
+    app: flink
+data:
+  flink-conf.yaml: |+
+    jobmanager.rpc.address: flink-jobmanager
+    jobmanager.rpc.port: 6123
+    taskmanager.rpc.port: 6122
+    blob.server.port: 6124
+    rest.address: 0.0.0.0
+    rest.bind-address: 0.0.0.0
+    
+    taskmanager.numberOfTaskSlots: {{ .Values.flink.taskmanager.slots }}
+    parallelism.default: {{ .Values.flink.config.parallelism }}
+    
+    jobmanager.memory.process.size: {{ .Values.flink.jobmanager.memory }}
+    taskmanager.memory.process.size: {{ .Values.flink.taskmanager.memory }}
+    
+    state.backend: {{ .Values.flink.config.stateBackend }}
+    state.checkpoint-storage: filesystem
+    state.checkpoints.dir: file:///opt/flink/recovery/checkpoints
+    state.savepoints.dir: file:///opt/flink/recovery/savepoints
+    {{- if .Values.flink.config.checkpointing.enabled }}
+    execution.checkpointing.interval: {{ .Values.flink.config.checkpointing.interval }}
+    {{- end }}
+
+---
+# ----------------------------------------------------------------------------
+# JOBMANAGER DEPLOYMENT
+# ----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+  labels:
+    app: flink
+    component: jobmanager
+spec:
+  replicas: {{ .Values.flink.jobmanager.replicas }}
+  selector:
+    matchLabels:
+      app: flink
+      component: jobmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: jobmanager
+    spec:
+      containers:
+      - name: jobmanager
+        image: {{ .Values.flink.image }}
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            {{- range .Values.flink.connectors }}
+            wget -q -P /opt/flink/lib {{ . }}
+            {{- end }}
+            /docker-entrypoint.sh jobmanager
+        ports:
+        - containerPort: 8081
+          name: rest
+        - containerPort: 6123
+          name: rpc
+        - containerPort: 6124
+          name: blob
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: flink-jobmanager
+        resources:
+          requests:
+            memory: {{ .Values.flink.jobmanager.resources.requests.memory | quote }}
+            cpu: {{ .Values.flink.jobmanager.resources.requests.cpu | quote }}
+          limits:
+            memory: {{ .Values.flink.jobmanager.resources.limits.memory | quote }}
+            cpu: {{ .Values.flink.jobmanager.resources.limits.cpu | quote }}
+        volumeMounts:
+        - name: config-volume
+          mountPath: /opt/flink/conf
+        - name: recovery-volume
+          mountPath: /opt/flink/recovery
+      volumes:
+      - name: config-volume
+        configMap:
+          name: flink-config
+          items:
+          - key: flink-conf.yaml
+            path: flink-conf.yaml
+      - name: recovery-volume
+        persistentVolumeClaim:
+          claimName: flink-pvc
+
+---
+# ----------------------------------------------------------------------------
+# JOBMANAGER SERVICE
+# ----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-jobmanager
+  labels:
+    app: flink
+spec:
+  type: ClusterIP
+  ports:
+  - name: rpc
+    port: 6123
+  - name: blob
+    port: 6124
+  - name: ui
+    port: 8081
+  selector:
+    app: flink
+    component: jobmanager
+
+---
+# ----------------------------------------------------------------------------
+# TASKMANAGER DEPLOYMENT
+# ----------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+  labels:
+    app: flink
+    component: taskmanager
+spec:
+  replicas: {{ .Values.flink.taskmanager.replicas }}
+  selector:
+    matchLabels:
+      app: flink
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: taskmanager
+    spec:
+      containers:
+      - name: taskmanager
+        image: {{ .Values.flink.image }}
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            {{- range .Values.flink.connectors }}
+            wget -q -P /opt/flink/lib {{ . }}
+            {{- end }}
+            /docker-entrypoint.sh taskmanager
+        ports:
+        - containerPort: 6122
+          name: rpc
+        env:
+        - name: JOB_MANAGER_RPC_ADDRESS
+          value: flink-jobmanager
+        resources:
+          requests:
+            memory: {{ .Values.flink.taskmanager.resources.requests.memory | quote }}
+            cpu: {{ .Values.flink.taskmanager.resources.requests.cpu | quote }}
+          limits:
+            memory: {{ .Values.flink.taskmanager.resources.limits.memory | quote }}
+            cpu: {{ .Values.flink.taskmanager.resources.limits.cpu | quote }}
+        volumeMounts:
+        - name: config-volume
+          mountPath: /opt/flink/conf
+        - name: recovery-volume
+          mountPath: /opt/flink/recovery
+      volumes:
+      - name: config-volume
+        configMap:
+          name: flink-config
+          items:
+          - key: flink-conf.yaml
+            path: flink-conf.yaml
+      - name: recovery-volume
+        emptyDir: {}
+
+---
+# ----------------------------------------------------------------------------
+# FLINK UI ROUTE (OpenShift)
+# ----------------------------------------------------------------------------
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: flink-ui
+  labels:
+    app: flink
+spec:
+  to:
+    kind: Service
+    name: flink-jobmanager
+  port:
+    targetPort: ui
+  tls:
+    termination: edge
+
+---
+# ----------------------------------------------------------------------------
+# SQL JOB SUBMITTER
+# ----------------------------------------------------------------------------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flink-sql-submit
+  labels:
+    app: flink
+spec:
+  backoffLimit: 5
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: sql-submit
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: sql-submit
+        image: {{ .Values.flink.image }}
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            # Install git
+            apt-get update && apt-get install -y git
+            
+            # Download connectors
+            {{- range .Values.flink.connectors }}
+            wget -q -P /opt/flink/lib {{ . }}
+            {{- end }}
+            
+            # Clone repo
+            git clone -b {{ .Values.flink.sqlJobs.branch }} {{ .Values.flink.sqlJobs.gitRepo }} /repo
+            
+            # Wait for JobManager
+            echo "Waiting for Flink JobManager..."
+            until curl -sf http://flink-jobmanager:8081/overview > /dev/null 2>&1; do
+              sleep 5
+            done
+            echo "JobManager ready"
+            
+            # Submit SQL jobs
+            for sql_file in /repo/{{ .Values.flink.sqlJobs.path }}/*.sql; do
+              echo "Submitting $sql_file"
+              /opt/flink/bin/sql-client.sh -f "$sql_file"
+            done
+            
+            echo "All SQL jobs submitted"
+{{- end }}

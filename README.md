@@ -11,6 +11,7 @@
 - [ ] Implement bookmark/checkpoint table for workers to track last processed window per device/config
 - [ ] Make analytics workers config-driven and device-agnostic (data sources, calculation logic, target storage)
 - [ ] Document architecture and best practices for analytics, storage, and event-driven patterns
+- [ ] Add CI/CD Logic
 
 A microservices-based IoT analytics platform for device management, telemetry ingestion, and real-time analytics.
 

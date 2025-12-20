@@ -65,4 +65,37 @@ public class GlobalExceptionHandler {
         
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
     }
+
+    /**
+     * Handle Jackson enum deserialization errors.
+     */
+    @ExceptionHandler(org.springframework.core.codec.DecodingException.class)
+    public Mono<ResponseEntity<ErrorResponse>> handleDecodingException(
+            org.springframework.core.codec.DecodingException ex, ServerWebExchange exchange) {
+        
+        String path = exchange.getRequest().getPath().value();
+        String message = "Invalid request format";
+        
+        // Extract root cause for better error message
+        Throwable cause = ex.getCause();
+        while (cause != null) {
+            if (cause instanceof IllegalArgumentException) {
+                message = cause.getMessage();
+                break;
+            }
+            cause = cause.getCause();
+        }
+        
+        log.warn("Decoding failed for {}: {}", path, message);
+
+        ErrorResponse response = ErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(),
+                "Invalid Request",
+                message,
+                path
+        );
+
+        return Mono.just(ResponseEntity.badRequest().body(response));
+    }
+    
 }

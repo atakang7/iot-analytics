@@ -1,0 +1,78 @@
+# =============================================================================
+# FLINK CONFIGURATION
+# =============================================================================
+flink:
+  enabled: true
+  image: flink:1.17
+  
+  # ---------------------------------------------------------------------------
+  # SQL Jobs Source
+  # ---------------------------------------------------------------------------
+  sqlJobs:
+    gitRepo: https://github.com/YOUR_USER/iot-analytics.git  # UPDATE THIS
+    branch: main
+    path: services/analytics/streaming
+  
+  # ---------------------------------------------------------------------------
+  # Connectors (downloaded at startup)
+  # ---------------------------------------------------------------------------
+  connectors:
+    - https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/1.17.2/flink-sql-connector-kafka-1.17.2.jar
+    # Add more connectors as needed:
+    # - https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.1.0-1.17/flink-connector-jdbc-3.1.0-1.17.jar
+    # - https://repo1.maven.org/maven2/org/postgresql/postgresql/42.6.0/postgresql-42.6.0.jar
+
+  # ---------------------------------------------------------------------------
+  # Kafka Configuration (used in SQL files)
+  # ---------------------------------------------------------------------------
+  kafka:
+    bootstrapServers: kafka:9092
+    topics:
+      sensorReadings: sensor-readings
+      alerts: alerts
+
+  # ---------------------------------------------------------------------------
+  # JobManager
+  # ---------------------------------------------------------------------------
+  jobmanager:
+    replicas: 1
+    memory: 1024m
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "1536Mi"
+        cpu: "1000m"
+
+  # ---------------------------------------------------------------------------
+  # TaskManager
+  # ---------------------------------------------------------------------------
+  taskmanager:
+    replicas: 1
+    memory: 1024m
+    slots: 2
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "1536Mi"
+        cpu: "1000m"
+
+  # ---------------------------------------------------------------------------
+  # Runtime Configuration
+  # ---------------------------------------------------------------------------
+  config:
+    parallelism: 1
+    checkpointing:
+      enabled: true
+      interval: 60s
+    stateBackend: hashmap  # or 'rocksdb' for large state
+
+  # ---------------------------------------------------------------------------
+  # Storage
+  # ---------------------------------------------------------------------------
+  storage:
+    size: 1Gi
+    accessMode: ReadWriteOnce
