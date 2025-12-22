@@ -75,15 +75,47 @@ spec:
         app: flink
         component: jobmanager
     spec:
+      initContainers:
+      - name: init-config
+        image: busybox
+        command: ['/bin/sh', '-c']
+        args:
+          - |
+            mkdir -p /conf
+            cp -R /config-src/* /conf || true
+        securityContext:
+          runAsUser: 1001970000
+        volumeMounts:
+        - name: config-src-volume
+          mountPath: /config-src
+        - name: conf-volume
+          mountPath: /conf
+
+      - name: init-connectors
+        image: {{ .Values.flink.image }}
+        command: ['/bin/sh', '-c']
+        args:
+          - |
+            echo LIB; ls -la /opt/flink/lib || true
+            echo COPY; cp -R /opt/flink/lib/* /connectors || true
+            echo POST COPY; ls -la /connectors || true
+            {{- range .Values.flink.connectors }}
+            wget -q -O /connectors/$(basename {{ . }}) {{ . }} || true
+            {{- end }}
+            echo FINAL; ls -la /connectors || true
+            sleep 1
+        securityContext:
+          runAsUser: 1001970000
+        volumeMounts:
+        - name: connectors-volume
+          mountPath: /connectors
+
       containers:
       - name: jobmanager
         image: {{ .Values.flink.image }}
         command: ["/bin/bash", "-c"]
         args:
           - |
-            {{- range .Values.flink.connectors }}
-            wget -q -P /opt/flink/lib {{ . }}
-            {{- end }}
             /docker-entrypoint.sh jobmanager
         ports:
         - containerPort: 8081
@@ -103,10 +135,12 @@ spec:
             memory: {{ .Values.flink.jobmanager.resources.limits.memory | quote }}
             cpu: {{ .Values.flink.jobmanager.resources.limits.cpu | quote }}
         volumeMounts:
-        - name: config-volume
+        - name: conf-volume
           mountPath: /opt/flink/conf
         - name: recovery-volume
           mountPath: /opt/flink/recovery
+        - name: connectors-volume
+          mountPath: /opt/flink/lib
       volumes:
       - name: config-volume
         configMap:
@@ -114,9 +148,16 @@ spec:
           items:
           - key: flink-conf.yaml
             path: flink-conf.yaml
+      - name: config-src-volume
+        configMap:
+          name: flink-config
+      - name: conf-volume
+        emptyDir: {}
       - name: recovery-volume
         persistentVolumeClaim:
           claimName: flink-pvc
+      - name: connectors-volume
+        emptyDir: {}
 
 ---
 # ----------------------------------------------------------------------------
@@ -164,15 +205,47 @@ spec:
         app: flink
         component: taskmanager
     spec:
+      initContainers:
+      - name: init-config
+        image: busybox
+        command: ['/bin/sh', '-c']
+        args:
+          - |
+            mkdir -p /conf
+            cp -R /config-src/* /conf || true
+        securityContext:
+          runAsUser: 1001970000
+        volumeMounts:
+        - name: config-src-volume
+          mountPath: /config-src
+        - name: conf-volume
+          mountPath: /conf
+
+      - name: init-connectors
+        image: {{ .Values.flink.image }}
+        command: ['/bin/sh', '-c']
+        args:
+          - |
+            echo LIB; ls -la /opt/flink/lib || true
+            echo COPY; cp -R /opt/flink/lib/* /connectors || true
+            echo POST COPY; ls -la /connectors || true
+            {{- range .Values.flink.connectors }}
+            wget -q -O /connectors/$(basename {{ . }}) {{ . }} || true
+            {{- end }}
+            echo FINAL; ls -la /connectors || true
+            sleep 1
+        securityContext:
+          runAsUser: 1001970000
+        volumeMounts:
+        - name: connectors-volume
+          mountPath: /connectors
+
       containers:
       - name: taskmanager
         image: {{ .Values.flink.image }}
         command: ["/bin/bash", "-c"]
         args:
           - |
-            {{- range .Values.flink.connectors }}
-            wget -q -P /opt/flink/lib {{ . }}
-            {{- end }}
             /docker-entrypoint.sh taskmanager
         ports:
         - containerPort: 6122
@@ -188,10 +261,12 @@ spec:
             memory: {{ .Values.flink.taskmanager.resources.limits.memory | quote }}
             cpu: {{ .Values.flink.taskmanager.resources.limits.cpu | quote }}
         volumeMounts:
-        - name: config-volume
+        - name: conf-volume
           mountPath: /opt/flink/conf
         - name: recovery-volume
           mountPath: /opt/flink/recovery
+        - name: connectors-volume
+          mountPath: /opt/flink/lib
       volumes:
       - name: config-volume
         configMap:
@@ -199,7 +274,14 @@ spec:
           items:
           - key: flink-conf.yaml
             path: flink-conf.yaml
+      - name: config-src-volume
+        configMap:
+          name: flink-config
+      - name: conf-volume
+        emptyDir: {}
       - name: recovery-volume
+        emptyDir: {}
+      - name: connectors-volume
         emptyDir: {}
 
 ---
