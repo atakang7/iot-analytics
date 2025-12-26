@@ -5,20 +5,32 @@ set -o pipefail
 WORKDIR="/tmp/repo"
 STATE="/tmp/last_commit"
 OC="/tmp/oc"
+SERVICE="gitops-controller"
 
+# JSON log output for Loki
 log() {
-  echo "[$(date -u +%H:%M:%S)] $1"
+  local level="$1" msg="$2" extra="${3:-}"
+  local ts=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+  if [[ -n "$extra" ]]; then
+    echo "{\"timestamp\":\"$ts\",\"level\":\"$level\",\"service\":\"$SERVICE\",\"message\":\"$msg\",$extra}"
+  else
+    echo "{\"timestamp\":\"$ts\",\"level\":\"$level\",\"service\":\"$SERVICE\",\"message\":\"$msg\"}"
+  fi
 }
+
+log_info() { log "info" "$1" "$2"; }
+log_warn() { log "warn" "$1" "$2"; }
+log_error() { log "error" "$1" "$2"; }
 
 setup_oc() {
   [[ -f "$OC" ]] && return 0
-  log "Setting up oc CLI..."
+  log_info "Downloading oc CLI"
   if curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz 2>/dev/null | tar -xz -C /tmp oc 2>/dev/null; then
     chmod +x "$OC"
-    log "oc CLI ready"
+    log_info "oc CLI ready"
     return 0
   fi
-  log "ERROR: Failed to download oc CLI"
+  log_error "Failed to download oc CLI"
   return 1
 }
 
@@ -40,100 +52,176 @@ clone_or_pull() {
   fi
 }
 
-build_deploy() {
+test_java() {
   local component=$1 path=$2
+  log_info "Running tests" "\"component\":\"$component\",\"type\":\"java\",\"phase\":\"test\""
+  cd "$WORKDIR/$path"
+  
+  if [[ ! -f "pom.xml" ]]; then
+    log_info "No pom.xml found, skipping tests" "\"component\":\"$component\""
+    return 0
+  fi
+  
+  if ! command -v mvn &>/dev/null; then
+    log_warn "mvn not available, skipping tests" "\"component\":\"$component\""
+    return 0
+  fi
+  
   local output
-  
-  log "⏳ Building $component..."
-  cd "$WORKDIR"
-  
-  output=$($OC start-build "$component" --from-dir="$path" --follow --wait 2>&1)
-  local build_status=$?
-  
-  if [[ $build_status -eq 0 ]]; then
-    $OC rollout restart "deployment/$component" >/dev/null 2>&1
-    log "✅ $component deployed"
+  output=$(mvn test -B -q 2>&1)
+  if [[ $? -eq 0 ]]; then
+    log_info "Tests passed" "\"component\":\"$component\",\"type\":\"java\",\"result\":\"success\""
     return 0
   else
-    log "❌ $component build failed"
-    # Extract useful error info
-    if echo "$output" | grep -qi "error\|failed\|unable"; then
-      echo "$output" | grep -i "error\|failed\|unable" | head -3 | while read -r line; do
-        log "   $line"
-      done
-    elif [[ -z "$output" ]]; then
-      log "   No build output - check if BuildConfig '$component' exists"
+    local errors=$(echo "$output" | grep -c -iE "failure|error" || echo "0")
+    log_error "Tests failed" "\"component\":\"$component\",\"type\":\"java\",\"result\":\"failure\",\"errors\":$errors"
+    return 1
+  fi
+}
+
+test_python() {
+  local component=$1 path=$2
+  log_info "Running tests" "\"component\":\"$component\",\"type\":\"python\",\"phase\":\"test\""
+  cd "$WORKDIR/$path"
+  
+  if [[ ! -f "requirements.txt" ]]; then
+    log_info "No requirements.txt found, skipping tests" "\"component\":\"$component\""
+    return 0
+  fi
+  
+  local py=$(command -v python3 || command -v python)
+  if [[ -z "$py" ]]; then
+    log_warn "python not available, skipping tests" "\"component\":\"$component\""
+    return 0
+  fi
+  
+  $py -m pip install -q -r requirements.txt pytest 2>/dev/null
+  
+  local output
+  output=$($py -m pytest -v --tb=short 2>&1)
+  local status=$?
+  
+  if [[ $status -eq 0 ]] || [[ $status -eq 5 ]]; then
+    log_info "Tests passed" "\"component\":\"$component\",\"type\":\"python\",\"result\":\"success\""
+    return 0
+  else
+    local failed=$(echo "$output" | grep -c "FAILED" || echo "0")
+    log_error "Tests failed" "\"component\":\"$component\",\"type\":\"python\",\"result\":\"failure\",\"failed\":$failed"
+    return 1
+  fi
+}
+
+build_deploy() {
+  local component=$1 path=$2
+  
+  log_info "Build started" "\"component\":\"$component\",\"phase\":\"build\",\"status\":\"running\""
+  cd "$WORKDIR"
+  
+  local start_time=$(date +%s)
+  local output
+  output=$($OC start-build "$component" --from-dir="$path" --follow --wait 2>&1)
+  local build_status=$?
+  local end_time=$(date +%s)
+  local duration=$((end_time - start_time))
+  
+  if [[ $build_status -eq 0 ]]; then
+    log_info "Build completed" "\"component\":\"$component\",\"phase\":\"build\",\"status\":\"success\",\"duration_seconds\":$duration"
+    
+    log_info "Deployment started" "\"component\":\"$component\",\"phase\":\"deploy\",\"status\":\"running\""
+    $OC rollout restart "deployment/$component" >/dev/null 2>&1
+    
+    if $OC rollout status "deployment/$component" --timeout=120s >/dev/null 2>&1; then
+      log_info "Deployment completed" "\"component\":\"$component\",\"phase\":\"deploy\",\"status\":\"success\""
     else
-      echo "$output" | tail -3 | while read -r line; do
-        log "   $line"
-      done
+      log_warn "Deployment rollout timeout" "\"component\":\"$component\",\"phase\":\"deploy\",\"status\":\"timeout\""
     fi
+    return 0
+  else
+    local error_msg=$(echo "$output" | grep -i "error\|failed" | head -1 | sed 's/"/\\"/g' | cut -c1-100)
+    log_error "Build failed" "\"component\":\"$component\",\"phase\":\"build\",\"status\":\"failure\",\"duration_seconds\":$duration,\"error\":\"$error_msg\""
     return 1
   fi
 }
 
 process_changes() {
   local old=$1 new=$2
-  [[ -z "$old" ]] && { log "First run - skipping build"; return; }
+  [[ -z "$old" ]] && { log_info "First run, skipping build" "\"reason\":\"initial_state\""; return; }
   
   cd "$WORKDIR"
   local files=$(git diff --name-only "$old" "$new" 2>/dev/null)
   [[ -z "$files" ]] && return
   
+  local file_count=$(echo "$files" | wc -l)
+  log_info "Processing changes" "\"files_changed\":$file_count,\"commit\":\"$new\""
+  
   local found=0
   
-  # Java services
   for svc in $JAVA_SERVICES; do
     if echo "$files" | grep -q "^services/$svc/"; then
       found=1
-      build_deploy "$svc" "services/$svc"
+      local should_deploy=1
+      
+      if [[ "$RUN_TESTS" == "true" ]]; then
+        test_java "$svc" "services/$svc" || should_deploy=0
+      fi
+      
+      if [[ $should_deploy -eq 1 ]]; then
+        build_deploy "$svc" "services/$svc"
+      else
+        log_warn "Deploy skipped due to test failure" "\"component\":\"$svc\""
+      fi
     fi
   done
   
-  # Python workers
   for wrk in $PYTHON_WORKERS; do
     if echo "$files" | grep -q "^workers/$wrk/"; then
       found=1
-      build_deploy "$wrk" "workers/$wrk"
+      local should_deploy=1
+      
+      if [[ "$RUN_TESTS" == "true" ]]; then
+        test_python "$wrk" "workers/$wrk" || should_deploy=0
+      fi
+      
+      if [[ $should_deploy -eq 1 ]]; then
+        build_deploy "$wrk" "workers/$wrk"
+      else
+        log_warn "Deploy skipped due to test failure" "\"component\":\"$wrk\""
+      fi
     fi
   done
   
-  [[ $found -eq 0 ]] && log "No relevant changes detected"
+  [[ $found -eq 0 ]] && log_info "No relevant component changes detected"
 }
 
 # Main
-log "GitOps Controller started"
-log "Repo: $GIT_REPO"
-log "Branch: $GIT_BRANCH"
-log "Poll interval: ${POLL_INTERVAL}s"
-log "Java: $JAVA_SERVICES"
-log "Python: $PYTHON_WORKERS"
-log "---"
+log_info "Controller starting" "\"repo\":\"$GIT_REPO\",\"branch\":\"$GIT_BRANCH\",\"poll_interval\":$POLL_INTERVAL,\"run_tests\":\"${RUN_TESTS:-false}\""
+log_info "Watching Java services" "\"services\":\"$JAVA_SERVICES\""
+log_info "Watching Python workers" "\"workers\":\"$PYTHON_WORKERS\""
 
 setup_oc || exit 1
 
 last=""
 [[ -f "$STATE" ]] && last=$(cat "$STATE")
-[[ -n "$last" ]] && log "Resuming from commit: $last"
+[[ -n "$last" ]] && log_info "Resuming from previous state" "\"last_commit\":\"$last\""
 
 while true; do
   commit=$(get_remote_commit)
   
   if [[ -z "$commit" ]]; then
-    log "WARN: Could not reach repo"
+    log_warn "Could not fetch remote commit"
     sleep "$POLL_INTERVAL"
     continue
   fi
   
   if [[ "$commit" != "$last" ]]; then
-    log "New commit: $commit"
+    log_info "New commit detected" "\"commit\":\"$commit\",\"previous\":\"${last:-none}\""
     
     if clone_or_pull; then
       process_changes "$last" "$commit"
       last="$commit"
       echo "$last" > "$STATE"
     else
-      log "ERROR: Git pull failed"
+      log_error "Git pull failed"
     fi
   fi
   
