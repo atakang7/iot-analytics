@@ -1,0 +1,30 @@
+# ci-cd/values.yaml
+
+gitops:
+  enabled: true
+  
+  # Git repository
+  repo: "https://github.com/atakang7/iot-analytics.git"
+  branch: "main"
+  token: ""  # For private repos: ghp_xxxx
+  
+  # Polling
+  pollInterval: "10"
+  
+  # Components to watch and deploy
+  java:
+    services:
+      - ingestion
+      - device-registry
+  
+  python:
+    workers:
+      - telemetry-worker
+      - stream-worker
+      - alert-worker
+  
+  # Notifications (optional)
+  slack: ""
+  
+  # Image
+  image: "bitnami/git:latest"

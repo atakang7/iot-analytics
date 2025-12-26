@@ -173,8 +173,8 @@ spec:
               mountPath: /scripts
           resources:
             requests:
-              cpu: 50m
-              memory: 128Mi
+              cpu: 100m
+              memory: 512Mi
             limits:
               cpu: 500m
               memory: 512Mi
