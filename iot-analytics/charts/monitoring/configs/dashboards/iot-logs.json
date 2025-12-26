@@ -1,0 +1,20 @@
+{
+  "uid": "iot-logs",
+  "title": "IoT Service Logs",
+  "tags": ["iot", "logs"],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "title": "All Service Logs",
+      "type": "logs",
+      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 20},
+      "targets": [{"expr": "{namespace=\"atakangul-dev\"}"}],
+      "datasource": {"type": "loki", "uid": "P8E80F9AEF21F6940"},
+      "options": {"showTime": true, "showLabels": true, "wrapLogMessage": true}
+    }
+  ],
+  "schemaVersion": 38
+}

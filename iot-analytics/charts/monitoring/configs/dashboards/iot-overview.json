@@ -1,0 +1,59 @@
+{
+  "uid": "iot-overview",
+  "title": "IoT Analytics Overview",
+  "tags": ["iot"],
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {"from": "now-1h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "title": "Telemetry Ingestion Rate",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "targets": [{"expr": "rate(iot_telemetry_received_total[1m])", "legendFormat": "{{device_type}}"}],
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}
+    },
+    {
+      "id": 2,
+      "title": "Alerts Generated",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "targets": [{"expr": "rate(iot_alerts_generated_total[5m])", "legendFormat": "{{alert_type}}"}],
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}
+    },
+    {
+      "id": 3,
+      "title": "Active Alerts",
+      "type": "stat",
+      "gridPos": {"x": 0, "y": 8, "w": 6, "h": 4},
+      "targets": [{"expr": "count(iot_alerts_active == 1) or vector(0)"}],
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}
+    },
+    {
+      "id": 4,
+      "title": "Telemetry Stored",
+      "type": "stat",
+      "gridPos": {"x": 6, "y": 8, "w": 6, "h": 4},
+      "targets": [{"expr": "sum(iot_telemetry_stored_total)"}],
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}
+    },
+    {
+      "id": 5,
+      "title": "Processing Errors",
+      "type": "stat",
+      "gridPos": {"x": 12, "y": 8, "w": 6, "h": 4},
+      "targets": [{"expr": "sum(rate(iot_processing_errors_total[5m]))"}],
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}
+    },
+    {
+      "id": 6,
+      "title": "KPIs Computed",
+      "type": "stat",
+      "gridPos": {"x": 18, "y": 8, "w": 6, "h": 4},
+      "targets": [{"expr": "sum(iot_kpis_computed_total)"}],
+      "datasource": {"type": "prometheus", "uid": "PBFA97CFB590B2093"}
+    }
+  ],
+  "schemaVersion": 38
+}

@@ -40,9 +40,9 @@ metadata:
   name: grafana-dashboards
 data:
   iot-overview.json: |
-{{ .Files.Get "configs/dashboards/iot-overview.json" | indent 4 }}
+{{ .Files.Get "configs/iot-overview.json" | indent 4 }}
   iot-logs.json: |
-{{ .Files.Get "configs/dashboards/iot-logs.json" | indent 4 }}
+{{ .Files.Get "configs/iot-logs.json" | indent 4 }}
 ---
 apiVersion: apps/v1
 kind: Deployment
