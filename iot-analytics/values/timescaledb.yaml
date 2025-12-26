@@ -1,4 +1,0 @@
-# timescaledb:
-#   storage: "20Gi"
-#   storageClass: "standard"
-#   password: "password"

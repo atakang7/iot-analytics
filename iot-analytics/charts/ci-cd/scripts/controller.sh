@@ -6,6 +6,7 @@ WORKDIR="/tmp/repo"
 STATE="/tmp/last_commit"
 OC="/tmp/oc"
 SERVICE="gitops-controller"
+RUN_TESTS="${RUN_TESTS:-true}"
 
 # JSON log output for Loki
 log() {
@@ -152,7 +153,8 @@ process_changes() {
   [[ -z "$files" ]] && return
   
   local file_count=$(echo "$files" | wc -l)
-  log_info "Processing changes" "\"files_changed\":$file_count,\"commit\":\"$new\""
+  local file_list=$(echo "$files" | tr '\n' ',' | sed 's/,$//')
+  log_info "Processing changes" "\"files_changed\":$file_count,\"commit\":\"$new\",\"files\":\"$file_list\""
   
   local found=0
   
@@ -190,7 +192,7 @@ process_changes() {
     fi
   done
   
-  [[ $found -eq 0 ]] && log_info "No relevant component changes detected"
+  [[ $found -eq 0 ]] && log_info "No matching components" "\"watched_paths\":\"services/{$JAVA_SERVICES},workers/{$PYTHON_WORKERS}\""
 }
 
 # Main
