@@ -6,7 +6,6 @@ WORKDIR="/tmp/repo"
 STATE="/tmp/last_commit"
 OC="/tmp/oc"
 SERVICE="gitops-controller"
-RUN_TESTS="${RUN_TESTS:-true}"
 
 # JSON log output for Loki
 log() {
@@ -157,18 +156,21 @@ process_changes() {
   log_info "Processing changes" "\"files_changed\":$file_count,\"commit\":\"$new\",\"files\":\"$file_list\""
   
   local found=0
+  local java_path="${JAVA_PATH:-services}"
+  local python_path="${PYTHON_PATH:-workers}"
   
   for svc in $JAVA_SERVICES; do
-    if echo "$files" | grep -q "^services/$svc/"; then
+    if echo "$files" | grep -q "^${java_path}/$svc/"; then
       found=1
       local should_deploy=1
+      local svc_path="${java_path}/$svc"
       
       if [[ "$RUN_TESTS" == "true" ]]; then
-        test_java "$svc" "services/$svc" || should_deploy=0
+        test_java "$svc" "$svc_path" || should_deploy=0
       fi
       
       if [[ $should_deploy -eq 1 ]]; then
-        build_deploy "$svc" "services/$svc"
+        build_deploy "$svc" "$svc_path"
       else
         log_warn "Deploy skipped due to test failure" "\"component\":\"$svc\""
       fi
@@ -176,29 +178,30 @@ process_changes() {
   done
   
   for wrk in $PYTHON_WORKERS; do
-    if echo "$files" | grep -q "^workers/$wrk/"; then
+    if echo "$files" | grep -q "^${python_path}/$wrk/"; then
       found=1
       local should_deploy=1
+      local wrk_path="${python_path}/$wrk"
       
       if [[ "$RUN_TESTS" == "true" ]]; then
-        test_python "$wrk" "workers/$wrk" || should_deploy=0
+        test_python "$wrk" "$wrk_path" || should_deploy=0
       fi
       
       if [[ $should_deploy -eq 1 ]]; then
-        build_deploy "$wrk" "workers/$wrk"
+        build_deploy "$wrk" "$wrk_path"
       else
         log_warn "Deploy skipped due to test failure" "\"component\":\"$wrk\""
       fi
     fi
   done
   
-  [[ $found -eq 0 ]] && log_info "No matching components" "\"watched_paths\":\"services/{$JAVA_SERVICES},workers/{$PYTHON_WORKERS}\""
+  [[ $found -eq 0 ]] && log_info "No matching components" "\"java_path\":\"$java_path\",\"python_path\":\"$python_path\""
 }
 
 # Main
 log_info "Controller starting" "\"repo\":\"$GIT_REPO\",\"branch\":\"$GIT_BRANCH\",\"poll_interval\":$POLL_INTERVAL,\"run_tests\":\"${RUN_TESTS:-false}\""
-log_info "Watching Java services" "\"services\":\"$JAVA_SERVICES\""
-log_info "Watching Python workers" "\"workers\":\"$PYTHON_WORKERS\""
+log_info "Watching Java" "\"path\":\"${JAVA_PATH:-services}\",\"services\":\"$JAVA_SERVICES\""
+log_info "Watching Python" "\"path\":\"${PYTHON_PATH:-workers}\",\"workers\":\"$PYTHON_WORKERS\""
 
 setup_oc || exit 1
 

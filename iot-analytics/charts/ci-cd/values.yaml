@@ -9,15 +9,21 @@ gitops:
   token: ""  # For private repos: ghp_xxxx
   
   # Polling
-  pollInterval: "10"
+  pollInterval: "3"
+  
+  # Run tests before deploy (requires image with maven/python)
+  runTests: false
   
   # Components to watch and deploy
+  # Path is relative to repo root
   java:
+    path: "services"  # services/ingestion, services/device-registry
     services:
       - ingestion
       - device-registry
   
   python:
+    path: "services/workers"  # services/workers/telemetry-worker, etc
     workers:
       - telemetry-worker
       - stream-worker
@@ -27,4 +33,6 @@ gitops:
   slack: ""
   
   # Image
+  # Default: bitnami/git (lightweight, no test tools)
+  # For tests: use custom image with maven/python or skip tests
   image: "bitnami/git:latest"

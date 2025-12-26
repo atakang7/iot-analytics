@@ -7,8 +7,11 @@ data:
   GIT_REPO: {{ .Values.gitops.repo | quote }}
   GIT_BRANCH: {{ .Values.gitops.branch | quote }}
   POLL_INTERVAL: {{ .Values.gitops.pollInterval | quote }}
+  JAVA_PATH: {{ .Values.gitops.java.path | default "services" | quote }}
   JAVA_SERVICES: {{ .Values.gitops.java.services | join " " | quote }}
+  PYTHON_PATH: {{ .Values.gitops.python.path | default "workers" | quote }}
   PYTHON_WORKERS: {{ .Values.gitops.python.workers | join " " | quote }}
+  RUN_TESTS: {{ .Values.gitops.runTests | default "false" | quote }}
 ---
 apiVersion: v1
 kind: ConfigMap
