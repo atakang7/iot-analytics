@@ -143,7 +143,7 @@ class StreamProcessor:
 
 
 def main():
-    log.info("Starting stream-worker")
+    log.info("Starting stream-workera")
     start_metrics_server(8000)
 
     processor = StreamProcessor()
