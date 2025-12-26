@@ -71,7 +71,7 @@ def main():
         except Exception as e:
             log.exception("Error")
             processing_errors.labels(worker="telemetry", error_type=type(e).__name__).inc()
- 
+  
 
 if __name__ == "__main__":
     main()
