@@ -1,3 +1,0 @@
-clusters:
-  - name: iot-kafka
-    bootstrapServers: kafka:9092

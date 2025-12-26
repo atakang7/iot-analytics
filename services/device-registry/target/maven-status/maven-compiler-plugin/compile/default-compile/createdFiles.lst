@@ -1,0 +1,4 @@
+com/iot/registry/Device.class
+com/iot/registry/DeviceRepository.class
+com/iot/registry/RegistryApplication.class
+com/iot/registry/DeviceController.class

@@ -63,15 +63,13 @@ spec:
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: username
-              optional: true
+              name: iot-central-secret
+              key: postgres_user
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: password
-              optional: true
+              name: iot-central-secret
+              key: postgres_password
         - name: KAFKA_BOOTSTRAP_SERVERS
           value: kafka:9092
         - name: DEVICE_REGISTRY_URL

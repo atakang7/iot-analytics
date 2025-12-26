@@ -5,38 +5,10 @@ spring:
   application:
     name: device-registry
   datasource:
-    url: jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:devices}
-    username: ${POSTGRES_USER:iot}
-    password: ${POSTGRES_PASSWORD:iot123}
-    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://${DB_HOST:localhost}:5432/${DB_NAME:iot}
+    username: ${DB_USER:iot}
+    password: ${DB_PASSWORD:iot}
   jpa:
     hibernate:
-      ddl-auto: update
-    show-sql: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,prometheus,metrics
-  endpoint:
-    health:
-      show-details: always
-  metrics:
-    tags:
-      application: ${spring.application.name}
-
-logging:
-  level:
-    com.iot: INFO
-    org.springframework: INFO
-
-springdoc:
-  api-docs:
-    path: /api-docs
-  swagger-ui:
-    path: /swagger-ui.html
+      ddl-auto: validate
+    open-in-view: false

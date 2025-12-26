@@ -7,20 +7,9 @@ metadata:
 data:
   POSTGRES_DB: "iot_timeseries"
   POSTGRES_USER: "iot"
-  # Tune for time-series workload
   TIMESCALEDB_TELEMETRY: "off"
   TS_TUNE_MEMORY: "2GB"
   TS_TUNE_NUM_CPUS: "2"
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: timescaledb-secret
-  labels:
-    app: timescaledb
-type: Opaque
-stringData:
-  POSTGRES_PASSWORD: "changeme"  # Override in values.yaml
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -28,68 +17,6 @@ metadata:
   name: timescaledb-init
   labels:
     app: timescaledb
-data:
-  init.sql: |
-    -- Enable TimescaleDB extension
-    CREATE EXTENSION IF NOT EXISTS timescaledb;
-
-    -- Raw telemetry hypertable
-    CREATE TABLE IF NOT EXISTS telemetry (
-        time        TIMESTAMPTZ NOT NULL,
-        device_id   TEXT NOT NULL,
-        sensor_type TEXT NOT NULL,
-        value       DOUBLE PRECISION,
-        metadata    JSONB
-    );
-    SELECT create_hypertable('telemetry', 'time', if_not_exists => TRUE);
-
-    -- Compression policy (compress chunks older than 7 days)
-    ALTER TABLE telemetry SET (
-        timescaledb.compress,
-        timescaledb.compress_segmentby = 'device_id,sensor_type'
-    );
-    SELECT add_compression_policy('telemetry', INTERVAL '7 days', if_not_exists => TRUE);
-
-    -- Retention policy (drop data older than 90 days)
-    SELECT add_retention_policy('telemetry', INTERVAL '90 days', if_not_exists => TRUE);
-
-    -- Continuous aggregate for hourly rollups
-    CREATE MATERIALIZED VIEW IF NOT EXISTS telemetry_hourly
-    WITH (timescaledb.continuous) AS
-    SELECT
-        time_bucket('1 hour', time) AS bucket,
-        device_id,
-        sensor_type,
-        avg(value) AS avg_value,
-        min(value) AS min_value,
-        max(value) AS max_value,
-        count(*) AS sample_count
-    FROM telemetry
-    GROUP BY bucket, device_id, sensor_type
-    WITH NO DATA;
-
-    SELECT add_continuous_aggregate_policy('telemetry_hourly',
-        start_offset => INTERVAL '3 hours',
-        end_offset => INTERVAL '1 hour',
-        schedule_interval => INTERVAL '1 hour',
-        if_not_exists => TRUE
-    );
-
-    -- Alerts table
-    CREATE TABLE IF NOT EXISTS alerts (
-        time        TIMESTAMPTZ NOT NULL,
-        device_id   TEXT NOT NULL,
-        alert_type  TEXT NOT NULL,
-        severity    TEXT NOT NULL,
-        message     TEXT,
-        acknowledged BOOLEAN DEFAULT FALSE
-    );
-    SELECT create_hypertable('alerts', 'time', if_not_exists => TRUE);
-
-    -- Indexes
-    CREATE INDEX IF NOT EXISTS idx_telemetry_device ON telemetry (device_id, time DESC);
-    CREATE INDEX IF NOT EXISTS idx_alerts_device ON alerts (device_id, time DESC);
-    CREATE INDEX IF NOT EXISTS idx_alerts_unack ON alerts (acknowledged, time DESC) WHERE NOT acknowledged;
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -133,7 +60,7 @@ spec:
             - configMapRef:
                 name: timescaledb-config
             - secretRef:
-                name: timescaledb-secret
+              name: iot-central-secret
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data

@@ -1,49 +1,11 @@
 server:
-  port: 8080
+  port: 8081
 
 spring:
   application:
-    n: iot-ingestion
-
+    name: ingestion
   kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
     producer:
-      acks: all
-      retries: 3
-      batch-size: 16384
-      linger-ms: 5
-      buffer-memory: 33554432
-
-# Application-specific configuration
-app:
-  kafka:
-    topic:
-      telemetry: ${KAFKA_TOPIC_TELEMETRY:sensor-readings}
-
-# Actuator endpoints for health checks and metrics
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,prometheus,metrics
-      base-path: /actuator
-  endpoint:
-    health:
-      show-details: always
-      probes:
-        enabled: true
-  metrics:
-    tags:
-      application: ${spring.application.name}
-    export:
-      prometheus:
-        enabled: true
-
-# Logging
-logging:
-  level:
-    root: INFO
-    com.iot: DEBUG
-    org.apache.kafka: WARN
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer

@@ -63,15 +63,13 @@ spec:
         - name: POSTGRES_USER
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: username
-              optional: true
+              name: iot-central-secret
+              key: postgres_user
         - name: POSTGRES_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: postgres-secret
-              key: password
-              optional: true
+              name: iot-central-secret
+              key: postgres_password
         - name: JAVA_OPTS
           value: "-Xms256m -Xmx512m"
         resources:
@@ -112,15 +110,6 @@ spec:
     port: 8080
     targetPort: 8080
   type: ClusterIP
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: postgres-secret
-type: Opaque
-stringData:
-  username: iot
-  password: iot123
 ---
 apiVersion: route.openshift.io/v1
 kind: Route

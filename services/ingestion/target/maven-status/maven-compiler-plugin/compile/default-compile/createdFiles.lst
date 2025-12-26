@@ -1,7 +1,3 @@
-com/iot/ingestion/config/JacksonConfig.class
-com/iot/ingestion/controller/TelemetryController.class
-com/iot/ingestion/exception/ErrorResponse.class
 com/iot/ingestion/IngestionApplication.class
-com/iot/ingestion/service/TelemetryService.class
-com/iot/ingestion/config/KafkaConfig.class
-com/iot/ingestion/exception/GlobalExceptionHandler.class
+com/iot/ingestion/TelemetryController.class
+com/iot/ingestion/Telemetry.class
