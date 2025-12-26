@@ -7,6 +7,7 @@ import com.iot.deviceregistry.exception.DeviceNotFoundException;
 import com.iot.deviceregistry.model.Device;
 import com.iot.deviceregistry.model.DeviceStatus;
 import com.iot.deviceregistry.repository.DeviceRepository;
+import com.iot.common.model.DeviceType;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -135,7 +136,7 @@ public class DeviceService {
     }
 
     @Transactional(readOnly = true)
-    public Page<DeviceResponse> findByFilters(String type, DeviceStatus status, String location, Pageable pageable) {
+    public Page<DeviceResponse> findByFilters(DeviceType type, DeviceStatus status, String location, Pageable pageable) {
         log.debug("Finding devices by filters - type: {}, status: {}, location: {}", type, status, location);
         return deviceRepository.findByFilters(type, status, location, pageable)
                 .map(DeviceResponse::fromEntity);
@@ -146,9 +147,9 @@ public class DeviceService {
         log.debug("Fetching device statistics");
         
         Map<String, Long> devicesByType = new HashMap<>();
-        List<String> types = deviceRepository.findAllDeviceTypes();
-        for (String type : types) {
-            devicesByType.put(type, deviceRepository.countByType(type));
+        List<com.iot.common.model.DeviceType> types = deviceRepository.findAllDeviceTypes();
+        for (com.iot.common.model.DeviceType type : types) {
+            devicesByType.put(type.getValue(), deviceRepository.countByType(type));
         }
 
         return DeviceStatsResponse.builder()
@@ -162,7 +163,7 @@ public class DeviceService {
     }
 
     @Transactional(readOnly = true)
-    public List<String> getAllDeviceTypes() {
+    public List<com.iot.common.model.DeviceType> getAllDeviceTypes() {
         return deviceRepository.findAllDeviceTypes();
     }
 

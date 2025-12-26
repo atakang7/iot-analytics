@@ -70,12 +70,9 @@ public class GlobalExceptionHandler {
      * Handle Jackson enum deserialization errors.
      */
     @ExceptionHandler(org.springframework.core.codec.DecodingException.class)
-    public Mono<ResponseEntity<ErrorResponse>> handleDecodingException(
-            org.springframework.core.codec.DecodingException ex, ServerWebExchange exchange) {
-        
-        String path = exchange.getRequest().getPath().value();
+    public ResponseEntity<ErrorResponse> handleDecodingException(org.springframework.core.codec.DecodingException ex) {
         String message = "Invalid request format";
-        
+
         // Extract root cause for better error message
         Throwable cause = ex.getCause();
         while (cause != null) {
@@ -85,17 +82,40 @@ public class GlobalExceptionHandler {
             }
             cause = cause.getCause();
         }
-        
-        log.warn("Decoding failed for {}: {}", path, message);
 
-        ErrorResponse response = ErrorResponse.of(
-                HttpStatus.BAD_REQUEST.value(),
-                "Invalid Request",
-                message,
-                path
-        );
+        log.warn("Decoding failed: {}", message);
 
-        return Mono.just(ResponseEntity.badRequest().body(response));
+        ErrorResponse response = ErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("Invalid Request")
+                .message(message)
+                .build();
+
+        return ResponseEntity.badRequest().body(response);
+    }
+
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException ex) {
+        String message = "Invalid request format";
+
+        Throwable cause = ex.getCause();
+        while (cause != null) {
+            if (cause instanceof IllegalArgumentException) {
+                message = cause.getMessage();
+                break;
+            }
+            cause = cause.getCause();
+        }
+
+        ErrorResponse response = ErrorResponse.builder()
+                .timestamp(Instant.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("Invalid Request")
+                .message(message)
+                .build();
+
+        return ResponseEntity.badRequest().body(response);
     }
     
 }

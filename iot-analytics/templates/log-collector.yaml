@@ -43,10 +43,11 @@ data:
       local log_line="$3"
       local timestamp=$(date +%s)000000000
       
-      # Forward log line as-is (assume it's already JSON-formatted by the app)
+      # Forward log line as a JSON string (escape quotes)
+      safe_log_line=$(echo "$log_line" | sed 's/"/\\"/g')
       curl -s -X POST "$LOKI_URL" \
         -H "Content-Type: application/json" \
-        -d "{\"streams\": [{\"stream\": {\"app\": \"$app\", \"pod\": \"$pod\", \"namespace\": \"$NAMESPACE\"}, \"values\": [[\"$timestamp\", $log_line]]}]}" > /dev/null 2>&1
+        -d "{\"streams\": [{\"stream\": {\"app\": \"$app\", \"pod\": \"$pod\", \"namespace\": \"$NAMESPACE\"}, \"values\": [[\"$timestamp\", \"$safe_log_line\"]]}]}" > /dev/null 2>&1
     }
     
     # Tail logs from pods

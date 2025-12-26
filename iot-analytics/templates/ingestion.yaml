@@ -12,6 +12,8 @@ metadata:
   labels:
     app: ingestion
 spec:
+  successfulBuildsHistoryLimit: 1
+  failedBuildsHistoryLimit: 1
   output:
     to:
       kind: ImageStreamTag
@@ -21,7 +23,8 @@ spec:
     binary: {}
   strategy:
     type: Docker
-    dockerStrategy: {}
+    dockerStrategy: 
+      dockerfilePath: ingestion/Dockerfile
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -40,7 +43,7 @@ spec:
         app: ingestion
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8081"
+        prometheus.io/port: "8080"
         prometheus.io/path: "/actuator/prometheus"
     spec:
       containers:
@@ -48,7 +51,7 @@ spec:
         image: image-registry.openshift-image-registry.svc:5000/atakangul-dev/ingestion:latest
         imagePullPolicy: Always
         ports:
-        - containerPort: 8081
+        - containerPort: 8080
           name: http
         env:
         - name: POSTGRES_HOST
@@ -85,7 +88,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /actuator/health/liveness
-            port: 8081
+            port: 8080
           initialDelaySeconds: 60
           periodSeconds: 10
           timeoutSeconds: 5
@@ -93,7 +96,7 @@ spec:
         readinessProbe:
           httpGet:
             path: /actuator/health/readiness
-            port: 8081
+            port: 8080
           initialDelaySeconds: 30
           periodSeconds: 5
           timeoutSeconds: 3
@@ -110,8 +113,8 @@ spec:
     app: ingestion
   ports:
   - name: http
-    port: 8081
-    targetPort: 8081
+    port: 8080
+    targetPort: 8080
   type: ClusterIP
 ---
 apiVersion: route.openshift.io/v1
@@ -125,7 +128,7 @@ spec:
     kind: Service
     name: ingestion
   port:
-    targetPort: 8081
+    targetPort: 8080
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect

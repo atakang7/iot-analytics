@@ -82,6 +82,13 @@
             <artifactId>h2</artifactId>
             <scope>test</scope>
         </dependency>
+        
+        <!-- Shared common models (DeviceType etc.) -->
+        <dependency>
+            <groupId>com.iot</groupId>
+            <artifactId>common</artifactId>
+            <version>1.0.0</version>
+        </dependency>
     </dependencies>
 
     <build>

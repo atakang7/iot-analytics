@@ -5,6 +5,7 @@ import com.iot.deviceregistry.dto.DeviceResponse;
 import com.iot.deviceregistry.dto.DeviceStatsResponse;
 import com.iot.deviceregistry.model.DeviceStatus;
 import com.iot.deviceregistry.service.DeviceService;
+import com.iot.common.model.DeviceType;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -79,7 +80,7 @@ public class DeviceController {
     @GetMapping("/search")
     @Operation(summary = "Search devices", description = "Search devices by type, status, and location")
     public ResponseEntity<Page<DeviceResponse>> searchDevices(
-            @RequestParam(required = false) String type,
+            @RequestParam(required = false) DeviceType type,
             @RequestParam(required = false) DeviceStatus status,
             @RequestParam(required = false) String location,
             @PageableDefault(size = 20) Pageable pageable) {
@@ -94,7 +95,7 @@ public class DeviceController {
 
     @GetMapping("/types")
     @Operation(summary = "Get all device types", description = "Get list of all unique device types")
-    public ResponseEntity<List<String>> getAllDeviceTypes() {
+    public ResponseEntity<List<com.iot.common.model.DeviceType>> getAllDeviceTypes() {
         return ResponseEntity.ok(deviceService.getAllDeviceTypes());
     }
 

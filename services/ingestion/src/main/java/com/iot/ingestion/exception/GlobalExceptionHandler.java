@@ -97,6 +97,39 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle ServerWebInputException which may wrap decoding errors (e.g., Jackson deserialization failures).
+     */
+    @ExceptionHandler(org.springframework.web.server.ServerWebInputException.class)
+    public Mono<ResponseEntity<ErrorResponse>> handleServerWebInputException(
+            org.springframework.web.server.ServerWebInputException ex, ServerWebExchange exchange) {
+
+        String path = exchange.getRequest().getPath().value();
+        String message = ex.getMessage();
+
+        Throwable cause = ex.getCause();
+        if (cause != null) {
+            // If the cause is a DecodingException, try to get the underlying problem (e.g., illegal argument from enum factory)
+            if (cause instanceof org.springframework.core.codec.DecodingException) {
+                Throwable inner = cause.getCause();
+                message = inner != null ? inner.getMessage() : cause.getMessage();
+            } else {
+                message = cause.getMessage();
+            }
+        }
+
+        log.warn("Failed to read request for {}: {}", path, message);
+
+        ErrorResponse response = ErrorResponse.of(
+                HttpStatus.BAD_REQUEST.value(),
+                "Bad Request",
+                message,
+                path
+        );
+
+        return Mono.just(ResponseEntity.badRequest().body(response));
+    }
+
+    /**
      * Handle all other exceptions.
      */
     @ExceptionHandler(Exception.class)

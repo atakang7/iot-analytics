@@ -40,7 +40,7 @@ CREATE TABLE kpi_output (
     PRIMARY KEY (device_id, kpi_name, window_end) NOT ENFORCED
 ) WITH (
     'connector' = 'jdbc',
-    'url' = 'jdbc:postgresql://localhost:5432/iot_analytics',
+    'url' = 'jdbc:postgresql://postgres:5432/iot_analytics',
     'table-name' = 'device_kpis',
     'username' = 'postgres',
     'password' = 'postgres'

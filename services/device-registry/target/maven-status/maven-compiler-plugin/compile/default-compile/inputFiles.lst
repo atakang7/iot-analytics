@@ -1,0 +1,12 @@
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/exception/GlobalExceptionHandler.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/dto/DeviceRequest.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/dto/DeviceStatsResponse.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/service/DeviceService.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/DeviceRegistryApplication.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/exception/DeviceNotFoundException.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/model/Device.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/exception/ErrorResponse.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/model/DeviceStatus.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/controller/DeviceController.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/repository/DeviceRepository.java
+/home/zperson/iot-analytics/services/device-registry/src/main/java/com/iot/deviceregistry/dto/DeviceResponse.java

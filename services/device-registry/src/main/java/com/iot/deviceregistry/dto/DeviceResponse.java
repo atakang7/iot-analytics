@@ -2,6 +2,7 @@ package com.iot.deviceregistry.dto;
 
 import com.iot.deviceregistry.model.Device;
 import com.iot.deviceregistry.model.DeviceStatus;
+import com.iot.common.model.DeviceType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,7 +19,7 @@ public class DeviceResponse {
 
     private UUID id;
     private String name;
-    private String type;
+    private DeviceType type;
     private String description;
     private String location;
     private DeviceStatus status;

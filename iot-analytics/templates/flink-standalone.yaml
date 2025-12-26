@@ -100,7 +100,27 @@ spec:
             echo COPY; cp -R /opt/flink/lib/* /connectors || true
             echo POST COPY; ls -la /connectors || true
             {{- range .Values.flink.connectors }}
-            wget -q -O /connectors/$(basename {{ . }}) {{ . }} || true
+            url="{{ . }}"
+            name="$(basename $url)"
+            echo "Downloading $url -> /connectors/$name"
+            tries=0
+            until [ $tries -ge 5 ]; do
+              if command -v wget >/dev/null 2>&1; then
+                wget -q -O /connectors/"$name" "$url" && break || true
+              elif command -v curl >/dev/null 2>&1; then
+                curl -fsSL -o /connectors/"$name" "$url" && break || true
+              else
+                echo "No downloader (wget/curl) available"
+                break
+              fi
+              tries=$((tries+1))
+              sleep 1
+            done
+            if [ -s /connectors/"$name" ]; then
+              echo "Downloaded $name"
+            else
+              echo "Failed to download $url"
+            fi
             {{- end }}
             echo FINAL; ls -la /connectors || true
             sleep 1
@@ -230,7 +250,27 @@ spec:
             echo COPY; cp -R /opt/flink/lib/* /connectors || true
             echo POST COPY; ls -la /connectors || true
             {{- range .Values.flink.connectors }}
-            wget -q -O /connectors/$(basename {{ . }}) {{ . }} || true
+            url="{{ . }}"
+            name="$(basename $url)"
+            echo "Downloading $url -> /connectors/$name"
+            tries=0
+            until [ $tries -ge 5 ]; do
+              if command -v wget >/dev/null 2>&1; then
+                wget -q -O /connectors/"$name" "$url" && break || true
+              elif command -v curl >/dev/null 2>&1; then
+                curl -fsSL -o /connectors/"$name" "$url" && break || true
+              else
+                echo "No downloader (wget/curl) available"
+                break
+              fi
+              tries=$((tries+1))
+              sleep 1
+            done
+            if [ -s /connectors/"$name" ]; then
+              echo "Downloaded $name"
+            else
+              echo "Failed to download $url"
+            fi
             {{- end }}
             echo FINAL; ls -la /connectors || true
             sleep 1
@@ -322,36 +362,63 @@ spec:
         app: flink
         component: sql-submit
     spec:
+      initContainers:
+      - name: init-config
+        image: busybox
+        command: ['/bin/sh', '-c']
+        args:
+          - |
+            mkdir -p /opt/flink/conf /opt/flink/lib || true
+            chown -R 1001970000:0 /opt/flink/conf /opt/flink/lib || true
+            ls -la /opt/flink || true
+        securityContext:
+          runAsUser: 1001970000
+        volumeMounts:
+        - name: conf-volume
+          mountPath: /opt/flink/conf
+        - name: lib-volume
+          mountPath: /opt/flink/lib
       restartPolicy: OnFailure
       containers:
       - name: sql-submit
         image: {{ .Values.flink.image }}
+        securityContext:
+          runAsUser: 1001970000
         command: ["/bin/bash", "-c"]
         args:
           - |
-            # Install git
-            apt-get update && apt-get install -y git
-            
-            # Download connectors
-            {{- range .Values.flink.connectors }}
-            wget -q -P /opt/flink/lib {{ . }}
-            {{- end }}
-            
-            # Clone repo
-            git clone -b {{ .Values.flink.sqlJobs.branch }} {{ .Values.flink.sqlJobs.gitRepo }} /repo
-            
+            set -e
+            # Download connectors directly
+            wget -q -P /opt/flink/lib https://repo1.maven.org/maven2/org/apache/flink/flink-sql-connector-kafka/1.17.2/flink-sql-connector-kafka-1.17.2.jar || true
+            wget -q -P /opt/flink/lib https://repo1.maven.org/maven2/org/apache/flink/flink-connector-jdbc/3.1.0-1.17/flink-connector-jdbc-3.1.0-1.17.jar || true
+            wget -q -P /opt/flink/lib https://repo1.maven.org/maven2/org/postgresql/postgresql/42.6.0/postgresql-42.6.0.jar || true
+
+            # Download repo tarball (no git required)
+            wget -q -O /tmp/repo.tar.gz https://github.com/atakang7/iot-analytics/archive/refs/heads/main.tar.gz || true
+            mkdir -p /repo && tar -xzf /tmp/repo.tar.gz -C /repo --strip-components=2 || true
+
             # Wait for JobManager
             echo "Waiting for Flink JobManager..."
             until curl -sf http://flink-jobmanager:8081/overview > /dev/null 2>&1; do
               sleep 5
             done
             echo "JobManager ready"
-            
-            # Submit SQL jobs
-            for sql_file in /repo/{{ .Values.flink.sqlJobs.path }}/*.sql; do
-              echo "Submitting $sql_file"
-              /opt/flink/bin/sql-client.sh -f "$sql_file"
-            done
-            
+
+            # Submit SQL jobs (recursive)
+            if [ -d /repo/{{ .Values.flink.sqlJobs.path }} ]; then
+              find /repo/{{ .Values.flink.sqlJobs.path }} -type f -name '*.sql' -print0 | while IFS= read -r -d '' sql_file; do
+                echo "Submitting $sql_file"
+                /opt/flink/bin/sql-client.sh -f "$sql_file" || echo "Submit failed: $sql_file"
+              done
+            else
+              echo "No SQL path: /repo/{{ .Values.flink.sqlJobs.path }}"
+            fi
+
             echo "All SQL jobs submitted"
+      volumeMounts: []
+      volumes:
+      - name: conf-volume
+        emptyDir: {}
+      - name: lib-volume
+        emptyDir: {}
 {{- end }}

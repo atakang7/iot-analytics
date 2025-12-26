@@ -17,7 +17,7 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
 
     Page<Device> findByStatus(DeviceStatus status, Pageable pageable);
 
-    Page<Device> findByType(String type, Pageable pageable);
+    Page<Device> findByType(com.iot.common.model.DeviceType type, Pageable pageable);
 
     Page<Device> findByLocation(String location, Pageable pageable);
 
@@ -28,18 +28,18 @@ public interface DeviceRepository extends JpaRepository<Device, UUID> {
            "(:status IS NULL OR d.status = :status) AND " +
            "(:location IS NULL OR d.location = :location)")
     Page<Device> findByFilters(
-            @Param("type") String type,
+            @Param("type") com.iot.common.model.DeviceType type,
             @Param("status") DeviceStatus status,
             @Param("location") String location,
             Pageable pageable);
 
     @Query("SELECT DISTINCT d.type FROM Device d")
-    List<String> findAllDeviceTypes();
+    List<com.iot.common.model.DeviceType> findAllDeviceTypes();
 
     @Query("SELECT DISTINCT d.location FROM Device d WHERE d.location IS NOT NULL")
     List<String> findAllLocations();
 
     long countByStatus(DeviceStatus status);
 
-    long countByType(String type);
+    long countByType(com.iot.common.model.DeviceType type);
 }

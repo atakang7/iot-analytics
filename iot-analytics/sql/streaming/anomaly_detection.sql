@@ -44,7 +44,7 @@ CREATE TABLE alerts (
     alert_type      STRING,
     severity        STRING,
     message         STRING,
-    value           DOUBLE,
+    `value`           DOUBLE,
     threshold       DOUBLE,
     event_time      TIMESTAMP(3),
     created_at      TIMESTAMP(3)
@@ -82,7 +82,7 @@ SELECT
         END
     ) AS message,
     
-    CAST(JSON_VALUE(`value`, '$.value') AS DOUBLE) AS value,
+    CAST(JSON_VALUE(`value`, '$.value') AS DOUBLE) AS `value`,
     
     CASE 
         WHEN CAST(JSON_VALUE(`value`, '$.value') AS DOUBLE) > 85 THEN 85.0

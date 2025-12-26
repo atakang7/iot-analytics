@@ -1,8 +1,10 @@
 package com.iot.deviceregistry.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import com.iot.common.model.DeviceType; 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -32,10 +34,10 @@ public class Device {
     @Column(nullable = false)
     private String name;
 
-    @NotBlank(message = "Device type is required")
-    @Size(min = 1, max = 100)
+    @NotNull(message = "Device type is required")
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String type;
+    private DeviceType type;
 
     @Size(max = 500)
     private String description;

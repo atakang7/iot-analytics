@@ -12,6 +12,8 @@ metadata:
   labels:
     app: device-registry
 spec:
+  successfulBuildsHistoryLimit: 1
+  failedBuildsHistoryLimit: 1
   output:
     to:
       kind: ImageStreamTag
@@ -21,7 +23,8 @@ spec:
     binary: {}
   strategy:
     type: Docker
-    dockerStrategy: {}
+    dockerStrategy: 
+      dockerfilePath: device-registry/Dockerfile
 ---
 apiVersion: apps/v1
 kind: Deployment
