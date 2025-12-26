@@ -38,6 +38,12 @@ podAnnotations: {}
 # For more information checkout: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 podLabels: {}
 
+workers:
+  - alert-worker
+  - stream-worker
+  - telemetry-worker
+  - kpi-job
+
 podSecurityContext: {}
   # fsGroup: 2000
 
@@ -159,3 +165,164 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+simulator:
+  image: image-registry.openshift-image-registry.svc:5000/atakangul-dev/device-simulator
+  tag: latest
+  ingestionUrl: http://ingestion:8081/telemetry
+
+simulators:
+  # Industrial Motor
+  - name: motor-001
+    deviceId: motor-001
+    deviceType: motor
+    intervalMs: 5000
+    sensors:
+      - id: temp-1
+        type: temperature
+        unit: celsius
+        min: 35
+        max: 95
+        pattern: load_dependent
+        noise: 0.15
+      - id: vib-1
+        type: vibration
+        unit: mm/s
+        min: 0.5
+        max: 4.0
+        pattern: spike
+        spike_probability: 0.03
+        spike_magnitude: 2.5
+        noise: 0.2
+      - id: current-1
+        type: current
+        unit: ampere
+        min: 8
+        max: 45
+        pattern: load_dependent
+        noise: 0.1
+      - id: rpm-1
+        type: rpm
+        unit: rpm
+        min: 1450
+        max: 1500
+        pattern: normal
+        noise: 0.03
+
+  # HVAC Unit
+  - name: hvac-001
+    deviceId: hvac-001
+    deviceType: hvac
+    intervalMs: 10000
+    sensors:
+      - id: temp-supply
+        type: temperature
+        unit: celsius
+        min: 12
+        max: 28
+        pattern: cyclic
+        period_seconds: 1800
+        noise: 0.1
+      - id: temp-return
+        type: temperature
+        unit: celsius
+        min: 18
+        max: 32
+        pattern: cyclic
+        period_seconds: 1800
+        noise: 0.1
+      - id: humidity-1
+        type: humidity
+        unit: percent
+        min: 30
+        max: 70
+        pattern: normal
+        noise: 0.15
+      - id: pressure-1
+        type: pressure
+        unit: bar
+        min: 1.5
+        max: 4.0
+        pattern: normal
+        noise: 0.08
+
+  # Pump
+  - name: pump-001
+    deviceId: pump-001
+    deviceType: pump
+    intervalMs: 5000
+    sensors:
+      - id: temp-1
+        type: temperature
+        unit: celsius
+        min: 25
+        max: 75
+        pattern: load_dependent
+        noise: 0.12
+      - id: pressure-in
+        type: pressure
+        unit: bar
+        min: 0.5
+        max: 2.0
+        pattern: normal
+        noise: 0.1
+      - id: pressure-out
+        type: pressure
+        unit: bar
+        min: 4.0
+        max: 8.0
+        pattern: load_dependent
+        noise: 0.1
+      - id: flow-1
+        type: flow
+        unit: l/min
+        min: 50
+        max: 200
+        pattern: load_dependent
+        noise: 0.15
+      - id: vib-1
+        type: vibration
+        unit: mm/s
+        min: 0.3
+        max: 3.5
+        pattern: spike
+        spike_probability: 0.02
+        spike_magnitude: 2.0
+        noise: 0.18
+
+  # Compressor
+  - name: compressor-001
+    deviceId: compressor-001
+    deviceType: compressor
+    intervalMs: 5000
+    sensors:
+      - id: temp-1
+        type: temperature
+        unit: celsius
+        min: 40
+        max: 110
+        pattern: load_dependent
+        noise: 0.15
+      - id: pressure-1
+        type: pressure
+        unit: bar
+        min: 6.0
+        max: 12.0
+        pattern: load_dependent
+        noise: 0.1
+      - id: vib-1
+        type: vibration
+        unit: mm/s
+        min: 0.8
+        max: 5.0
+        pattern: spike
+        spike_probability: 0.04
+        spike_magnitude: 3.0
+        noise: 0.2
+      - id: current-1
+        type: current
+        unit: ampere
+        min: 15
+        max: 80
+        pattern: load_dependent
+        noise: 0.12

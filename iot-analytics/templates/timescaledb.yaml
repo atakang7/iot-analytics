@@ -1,36 +1,22 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: timescaledb-config
-  labels:
-    app: timescaledb
-data:
-  POSTGRES_DB: "iot_timeseries"
-  POSTGRES_USER: "iot"
-  TIMESCALEDB_TELEMETRY: "off"
-  TS_TUNE_MEMORY: "2GB"
-  TS_TUNE_NUM_CPUS: "2"
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
   name: timescaledb-init
-  labels:
-    app: timescaledb
+data:
+  schema.sql: |
+{{ .Files.Get "configs/schema.sql" | indent 4 }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: timescaledb-pvc
-  labels:
-    app: timescaledb
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ .Values.timescaledb.storage | default "20Gi" }}
-  storageClassName: {{ .Values.timescaledb.storageClass | default "standard" }}
+      storage: 20Gi
+  storageClassName: gp3
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -41,7 +27,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    type: Recreate  # Required for RWO PVC
+    type: Recreate
   selector:
     matchLabels:
       app: timescaledb
@@ -55,12 +41,24 @@ spec:
           image: timescale/timescaledb:latest-pg15
           ports:
             - containerPort: 5432
-              name: postgres
-          envFrom:
-            - configMapRef:
-                name: timescaledb-config
-            - secretRef:
-              name: iot-central-secret
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: iot-central-secret
+                  key: timescaledb_db
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: iot-central-secret
+                  key: timescaledb_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: iot-central-secret
+                  key: timescaledb_password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -75,12 +73,12 @@ spec:
               cpu: "2"
           livenessProbe:
             exec:
-              command: ["pg_isready", "-U", "iot", "-d", "iot_timeseries"]
+              command: ["pg_isready", "-U", "iot", "-d", "iot"]
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             exec:
-              command: ["pg_isready", "-U", "iot", "-d", "iot_timeseries"]
+              command: ["pg_isready", "-U", "iot", "-d", "iot"]
             initialDelaySeconds: 5
             periodSeconds: 5
       volumes:
@@ -95,13 +93,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: timescaledb
-  labels:
-    app: timescaledb
 spec:
-  type: ClusterIP
   ports:
     - port: 5432
       targetPort: 5432
-      name: postgres
   selector:
     app: timescaledb

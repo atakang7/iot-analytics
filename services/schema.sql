@@ -1,4 +1,4 @@
--- IoT Analytics - Minimal Schema
+-- IoT Analytics - Full Schema
 -- TimescaleDB (PostgreSQL + timeseries)
 
 CREATE EXTENSION IF NOT EXISTS timescaledb;
@@ -35,14 +35,11 @@ SELECT create_hypertable('telemetry', 'time');
 CREATE INDEX idx_telemetry_device ON telemetry (device_id, time DESC);
 CREATE INDEX idx_telemetry_sensor ON telemetry (sensor_type, time DESC);
 
--- Compression after 7 days
 ALTER TABLE telemetry SET (
     timescaledb.compress,
     timescaledb.compress_segmentby = 'device_id, sensor_type'
 );
 SELECT add_compression_policy('telemetry', INTERVAL '7 days');
-
--- Retention: 30 days
 SELECT add_retention_policy('telemetry', INTERVAL '30 days');
 
 -- ===========================================
@@ -63,6 +60,7 @@ CREATE TABLE kpis (
 
 SELECT create_hypertable('kpis', 'created_at');
 
+CREATE UNIQUE INDEX idx_kpis_upsert ON kpis (device_id, kpi_name, window_start);
 CREATE INDEX idx_kpis_device ON kpis (device_id, created_at DESC);
 CREATE INDEX idx_kpis_name ON kpis (kpi_name, created_at DESC);
 
@@ -96,7 +94,7 @@ CREATE INDEX idx_alerts_unack ON alerts (acknowledged, created_at DESC) WHERE NO
 CREATE TABLE thresholds (
     id            SERIAL PRIMARY KEY,
     sensor_type   TEXT NOT NULL,
-    device_type   TEXT,  -- NULL = all
+    device_type   TEXT,
     warning_low   DOUBLE PRECISION,
     warning_high  DOUBLE PRECISION,
     critical_low  DOUBLE PRECISION,
@@ -108,4 +106,23 @@ CREATE TABLE thresholds (
 INSERT INTO thresholds (sensor_type, warning_high, critical_high) VALUES
     ('temperature', 70.0, 85.0),
     ('vibration', 1.5, 2.5),
-    ('humidity', 80.0, 95.0);
+    ('humidity', 80.0, 95.0),
+    ('pressure', 8.0, 10.0);
+
+INSERT INTO thresholds (sensor_type, warning_low, critical_low) VALUES
+    ('temperature', 5.0, 0.0);
+
+-- ===========================================
+-- JOB WATERMARKS (for exactly-once processing)
+-- ===========================================
+
+CREATE TABLE job_watermarks (
+    job_name          TEXT PRIMARY KEY,
+    last_processed_at TIMESTAMPTZ NOT NULL,
+    window_size       INTERVAL NOT NULL,
+    updated_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+INSERT INTO job_watermarks (job_name, last_processed_at, window_size) VALUES
+    ('kpi_5min', '1970-01-01', '5 minutes'),
+    ('kpi_1hr', '1970-01-01', '1 hour');

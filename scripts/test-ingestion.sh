@@ -3,7 +3,7 @@
 # Test script for IoT Ingestion Service
 # Requires: curl, jq (optional for pretty output)
 
-BASE_URL="${INGESTION_URL:-http://localhost:8080}"
+BASE_URL="${INGESTION_URL:-http://localhost:8081}"
 API_URL="$BASE_URL/api/v1/telemetry"
 
 echo "=== IoT Ingestion Service Test ==="

@@ -8,11 +8,9 @@ kind: Role
 metadata:
   name: log-collector
 rules:
-- apiGroups: [""]
-  resources:
-  - pods
-  - pods/log
-  verbs: ["get", "watch", "list"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "watch", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -23,8 +21,8 @@ roleRef:
   kind: Role
   name: log-collector
 subjects:
-- kind: ServiceAccount
-  name: log-collector
+  - kind: ServiceAccount
+    name: log-collector
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -34,52 +32,55 @@ data:
   collector.sh: |
     #!/bin/bash
     LOKI_URL="http://loki:3100/loki/api/v1/push"
-    NAMESPACE="${NAMESPACE:-atakangul-dev}"
     
-    # Function to push logs to Loki
     push_to_loki() {
-      local app="$1"
-      local pod="$2"
-      local log_line="$3"
-      local timestamp=$(date +%s)000000000
+      local app="$1" pod="$2" line="$3"
+      local ts=$(date +%s)000000000
+      local level="info" service="$app"
       
-      # Forward log line as a JSON string (escape quotes)
-      safe_log_line=$(echo "$log_line" | sed 's/"/\\"/g')
-      curl -s -X POST "$LOKI_URL" \
-        -H "Content-Type: application/json" \
-        -d "{\"streams\": [{\"stream\": {\"app\": \"$app\", \"pod\": \"$pod\", \"namespace\": \"$NAMESPACE\"}, \"values\": [[\"$timestamp\", \"$safe_log_line\"]]}]}" > /dev/null 2>&1
+      # JSON format: "level":"info"
+      if [[ "$line" =~ \"level\":\"([^\"]+)\" ]]; then
+        level="${BASH_REMATCH[1]}"
+      # Logfmt format: level=info or level=INFO
+      elif [[ "$line" =~ level=([a-zA-Z]+) ]]; then
+        level="${BASH_REMATCH[1],,}"
+      # Java/Spring: INFO, WARN, ERROR, DEBUG at start or after timestamp
+      elif [[ "$line" =~ (^|[[:space:]])(INFO|WARN|ERROR|DEBUG|TRACE|FATAL)([[:space:]]|$) ]]; then
+        level="${BASH_REMATCH[2],,}"
+      fi
+      
+      # Service extraction
+      [[ "$line" =~ \"service\":\"([^\"]+)\" ]] && service="${BASH_REMATCH[1]}"
+      [[ "$line" =~ service=([^[:space:]]+) ]] && service="${BASH_REMATCH[1]}"
+      
+      local safe="${line//\\/\\\\}"
+      safe="${safe//\"/\\\"}"
+      safe="${safe//$'\n'/\\n}"
+      safe="${safe//$'\r'/}"
+      
+      curl -s -X POST "$LOKI_URL" -H "Content-Type: application/json" \
+        -d "{\"streams\":[{\"stream\":{\"app\":\"$app\",\"pod\":\"$pod\",\"namespace\":\"$NAMESPACE\",\"level\":\"$level\",\"service\":\"$service\"},\"values\":[[\"$ts\",\"$safe\"]]}]}" >/dev/null 2>&1 &
     }
     
-    # Tail logs from pods
-    tail_pod_logs() {
-      local pod="$1"
-      local app="$2"
-      echo "Starting log collection for pod: $pod (app: $app)"
-      
-      kubectl logs -f "$pod" -n "$NAMESPACE" 2>/dev/null | while read -r line; do
-        push_to_loki "$app" "$pod" "$line"
+    tail_pod() {
+      local pod="$1" app="$2"
+      echo "Tailing $pod"
+      kubectl logs -f --tail=100 "$pod" -n "$NAMESPACE" 2>/dev/null | while read -r line; do
+        [ -n "$line" ] && push_to_loki "$app" "$pod" "$line"
       done
     }
     
-    # Main loop - discover and tail pods
-    echo "Log collector starting..."
+    echo "Log collector starting"
+    TAILED=""
     while true; do
-      # Get running pods with app labels
-      pods=$(kubectl get pods -n "$NAMESPACE" -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.metadata.name},{.metadata.labels.app}{"\n"}{end}' 2>/dev/null)
-      
-      for pod_info in $pods; do
-        pod=$(echo "$pod_info" | cut -d',' -f1)
-        app=$(echo "$pod_info" | cut -d',' -f2)
-        
-        if [ -n "$pod" ] && [ -n "$app" ]; then
-          # Check if already tailing this pod
-          if ! pgrep -f "kubectl logs -f $pod" > /dev/null 2>&1; then
-            tail_pod_logs "$pod" "$app" &
-          fi
+      PODS=$(kubectl get pods -n "$NAMESPACE" -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.metadata.name},{.metadata.labels.app}{"\n"}{end}' 2>/dev/null)
+      while IFS=, read -r pod app; do
+        if [ -n "$pod" ] && [ -n "$app" ] && [[ ! "$TAILED" =~ "$pod" ]]; then
+          TAILED="$TAILED $pod"
+          tail_pod "$pod" "$app" &
         fi
-      done
-      
-      sleep 30
+      done <<< "$PODS"
+      sleep 60
     done
 ---
 apiVersion: apps/v1
@@ -100,26 +101,26 @@ spec:
     spec:
       serviceAccountName: log-collector
       containers:
-      - name: log-collector
-        image: bitnami/kubectl:latest
-        command: ["/bin/bash", "/scripts/collector.sh"]
-        env:
-        - name: NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        volumeMounts:
-        - name: script
-          mountPath: /scripts
-        resources:
-          requests:
-            cpu: 50m
-            memory: 128Mi
-          limits:
-            cpu: 200m
-            memory: 384Mi
+        - name: collector
+          image: bitnami/kubectl:latest
+          command: ["/bin/bash", "/scripts/collector.sh"]
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 200m
+              memory: 512Mi
       volumes:
-      - name: script
-        configMap:
-          name: log-collector-script
-          defaultMode: 0755
+        - name: script
+          configMap:
+            name: log-collector-script
+            defaultMode: 0755

@@ -1,55 +1,28 @@
+
 #!/bin/bash
-
-# Build and deploy all services
-
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd .. && pwd)"
+WORKERS=(alert-worker stream-worker telemetry-worker kpi-job)
+SERVICES=(device-registry ingestion)
 
-echo "=== Building IoT Analytics Services ==="
+echo "=== Building and Deploying All Workers and Services ==="
 
-# Build Device Registry
-echo "Building Device Registry..."
-cd "$PROJECT_ROOT/services/device-registry"
-docker build -t device-registry:latest .
+for worker in "${WORKERS[@]}"; do
+    echo "Preparing build context for $worker..."
+    rm -rf "$PROJECT_ROOT/services/workers/$worker/common"
+    unlink "$PROJECT_ROOT/services/workers/$worker/common" 2>/dev/null || true
+    cp -r "$PROJECT_ROOT/services/workers/common" "$PROJECT_ROOT/services/workers/$worker/common"
+    echo "Starting OpenShift build for $worker..."
+    oc start-build "$worker" --from-dir="$PROJECT_ROOT/services/workers/$worker" || true
+    rm -rf "$PROJECT_ROOT/services/workers/$worker/common"
+    unlink "$PROJECT_ROOT/services/workers/$worker/common" 2>/dev/null || true
+done
 
-# Build Ingestion Service
-echo "Building Ingestion Service..."
-cd "$PROJECT_ROOT/services/ingestion"
-docker build -t ingestion:latest .
+# Build and start OpenShift builds for services
+for service in "${SERVICES[@]}"; do
+	echo "Starting OpenShift build for $service..."
+	oc start-build "$service" --from-dir="$PROJECT_ROOT/services/$service" || true
+done
 
-# Build Analytics Service
-echo "Building Analytics Service..."
-cd "$PROJECT_ROOT/services/analytics"
-docker build -t analytics:latest .
-
-echo "=== All services built successfully ==="
-
-# Deploy to Kubernetes
-echo "=== Deploying to Kubernetes ==="
-
-cd "$PROJECT_ROOT/k8s"
-
-# Deploy infrastructure firstfailed to compute cache key: failed to calculate checksum of ref 9d0c5845-8188-4a9d-9546-7e3d29bd4d7f::quytqijnipe8tewe7dz8eqmt4: "/mvnw": not found
-echo "Deploying infrastructure..."
-kubectl apply -f infrastructure/
-
-# Wait for infrastructure to be ready
-echo "Waiting for infrastructure to be ready..."
-kubectl wait --for=condition=available --timeout=120s deployment/postgres
-kubectl wait --for=condition=available --timeout=120s deployment/rabbitmq
-
-# Deploy services
-echo "Deploying services..."
-kubectl apply -f services/
-
-echo "=== Deployment complete ==="
-
-# Show status
-echo ""
-echo "=== Deployment Status ==="
-kubectl get pods
-echo ""
-echo "=== Services ==="
-kubectl get services
+echo "=== All builds triggered ==="

@@ -12,13 +12,11 @@ data:
         url: http://prometheus:9090
         uid: PBFA97CFB590B2093
         isDefault: true
-        editable: false
       - name: Loki
         type: loki
         access: proxy
         url: http://loki:3100
         uid: P8E80F9AEF21F6940
-        editable: false
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -33,7 +31,6 @@ data:
         folder: ''
         type: file
         disableDeletion: false
-        editable: true
         options:
           path: /var/lib/grafana/dashboards
 ---
@@ -41,11 +38,18 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-dashboards
+data:
+  iot-overview.json: |
+{{ .Files.Get "configs/dashboards/iot-overview.json" | indent 4 }}
+  iot-logs.json: |
+{{ .Files.Get "configs/dashboards/iot-logs.json" | indent 4 }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: grafana
+  labels:
+    app: grafana
 spec:
   replicas: 1
   selector:
@@ -57,45 +61,45 @@ spec:
         app: grafana
     spec:
       containers:
-      - name: grafana
-        image: grafana/grafana:latest
-        env:
-        - name: GF_SECURITY_ADMIN_USER
-          valueFrom:
-            secretKeyRef:
-              name: iot-central-secret
-              key: grafana_admin_user
-        - name: GF_SECURITY_ADMIN_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: iot-central-secret
-              key: grafana_admin_password
-        ports:
-        - containerPort: 3000
-        volumeMounts:
-        - name: datasources
-          mountPath: /etc/grafana/provisioning/datasources
-        - name: dashboards-provider
-          mountPath: /etc/grafana/provisioning/dashboards
-        - name: dashboards
-          mountPath: /var/lib/grafana/dashboards
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 300m
-            memory: 256Mi
+        - name: grafana
+          image: grafana/grafana:10.2.0
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: iot-central-secret
+                  key: grafana_admin_user
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: iot-central-secret
+                  key: grafana_admin_password
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
       volumes:
-      - name: datasources
-        configMap:
-          name: grafana-datasources
-      - name: dashboards-provider
-        configMap:
-          name: grafana-dashboards-provider
-      - name: dashboards
-        configMap:
-          name: grafana-dashboards
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: grafana-dashboards-provider
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
 ---
 apiVersion: v1
 kind: Service
@@ -105,24 +109,14 @@ spec:
   selector:
     app: grafana
   ports:
-  - port: 3000
-    targetPort: 3000
+    - port: 3000
+      targetPort: 3000
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
   name: grafana
-  labels:
-    app: grafana
 spec:
-  to:
-    kind: Service
-    name: grafana
-  port:
-    targetPort: 3000
-  tls:
-    termination: edge
-    insecureEdgeTerminationPolicy: Redirect
   to:
     kind: Service
     name: grafana

@@ -1,0 +1,54 @@
+# .github/workflows/_build-deploy.yaml
+# Reusable workflow - called by cd.yaml
+name: Build & Deploy
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        required: true
+        type: string
+      path:
+        required: true
+        type: string
+    secrets:
+      OPENSHIFT_SERVER:
+        required: true
+      OPENSHIFT_TOKEN:
+        required: true
+      OPENSHIFT_NAMESPACE:
+        required: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup OpenShift CLI
+        uses: ./.github/actions/setup-oc
+        with:
+          server: ${{ secrets.OPENSHIFT_SERVER }}
+          token: ${{ secrets.OPENSHIFT_TOKEN }}
+          namespace: ${{ secrets.OPENSHIFT_NAMESPACE }}
+
+      - name: Build image
+        run: |
+          echo "::group::Building ${{ inputs.name }}"
+          oc start-build ${{ inputs.name }} --from-dir=${{ inputs.path }} --follow --wait
+          echo "::endgroup::"
+
+      - name: Deploy
+        run: |
+          echo "::group::Deploying ${{ inputs.name }}"
+          oc rollout restart deployment/${{ inputs.name }}
+          oc rollout status deployment/${{ inputs.name }} --timeout=300s
+          echo "::endgroup::"
+
+      - name: Verify
+        run: |
+          POD=$(oc get pod -l app=${{ inputs.name }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+          if [ -n "$POD" ]; then
+            echo "Pod: $POD"
+            oc get pod $POD
+          fi

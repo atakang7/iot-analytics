@@ -1,0 +1,34 @@
+# .github/config/services.yaml
+# Single source of truth for all deployable components
+# CI/CD workflows read from this file
+
+java:
+  - name: ingestion
+    path: services/ingestion
+    port: 8081
+    health: /telemetry/health
+    
+  - name: device-registry
+    path: services/device-registry
+    port: 8081
+    health: /devices
+
+python:
+  - name: telemetry-worker
+    path: workers/telemetry-worker
+    
+  - name: stream-worker
+    path: workers/stream-worker
+    
+  - name: alert-worker
+    path: workers/alert-worker
+
+infrastructure:
+  - name: kafka
+    path: helm/templates/kafka.yaml
+    
+  - name: timescaledb
+    path: helm/templates/timescaledb.yaml
+    
+  - name: grafana
+    path: helm/templates/grafana.yaml

@@ -46,5 +46,61 @@ services:
     depends_on:
       - kafka
 
+  alert-worker:
+    build:
+      context: ./workers
+      dockerfile: alert-worker/Dockerfile
+    environment:
+      DB_HOST: timescaledb
+      DB_NAME: iot
+      DB_USER: iot
+      DB_PASSWORD: iot
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      - timescaledb
+      - kafka
+
+  kpi-job:
+    build:
+      context: ./workers
+      dockerfile: kpi-job/Dockerfile
+    environment:
+      DB_HOST: timescaledb
+      DB_NAME: iot
+      DB_USER: iot
+      DB_PASSWORD: iot
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      - timescaledb
+      - kafka
+
+  stream-worker:
+    build:
+      context: ./workers
+      dockerfile: stream-worker/Dockerfile
+    environment:
+      DB_HOST: timescaledb
+      DB_NAME: iot
+      DB_USER: iot
+      DB_PASSWORD: iot
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      - timescaledb
+      - kafka
+
+  telemetry-worker:
+    build:
+      context: ./workers
+      dockerfile: telemetry-worker/Dockerfile
+    environment:
+      DB_HOST: timescaledb
+      DB_NAME: iot
+      DB_USER: iot
+      DB_PASSWORD: iot
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      - timescaledb
+      - kafka
+
 volumes:
   timescale_data:
