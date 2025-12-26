@@ -37,7 +37,7 @@ def parse_alert(msg: dict) -> dict:
 def main():
     log.info("Starting alert-worker")
     start_metrics_server(8000)
-
+ 
     log.info("Starting kafka-consumer")
     consumer = KafkaConsumer(
         topic=KAFKA_ALERTS_TOPIC,
