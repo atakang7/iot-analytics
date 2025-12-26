@@ -9,10 +9,10 @@ gitops:
   token: ""  # For private repos: ghp_xxxx
   
   # Polling
-  pollInterval: "3"
+  pollInterval: "60"
   
-  # Run tests before deploy (requires image with maven/python)
-  runTests: false
+  # Run tests before deploy
+  runTests: true
   
   # Components to watch and deploy
   # Path is relative to repo root

@@ -55,26 +55,32 @@ clone_or_pull() {
 test_java() {
   local component=$1 path=$2
   log_info "Running tests" "\"component\":\"$component\",\"type\":\"java\",\"phase\":\"test\""
+  
   cd "$WORKDIR/$path"
   
   if [[ ! -f "pom.xml" ]]; then
-    log_info "No pom.xml found, skipping tests" "\"component\":\"$component\""
+    log_info "No pom.xml, skipping" "\"component\":\"$component\""
     return 0
   fi
   
-  if ! command -v mvn &>/dev/null; then
-    log_warn "mvn not available, skipping tests" "\"component\":\"$component\""
-    return 0
-  fi
+  # Run maven tests in a pod
+  local pod_name="test-java-$$"
+  local result
   
-  local output
-  output=$(mvn test -B -q 2>&1)
-  if [[ $? -eq 0 ]]; then
+  result=$(tar -cf - . | $OC run "$pod_name" --rm -i --restart=Never \
+    --image=maven:3.9-eclipse-temurin-17 \
+    -- sh -c 'cd /tmp && tar -xf - && mvn test -B -q 2>&1; echo "EXIT:$?"' 2>&1)
+  
+  local exit_code=$(echo "$result" | grep -o 'EXIT:[0-9]*' | tail -1 | cut -d: -f2)
+  
+  if [[ "$exit_code" == "0" ]]; then
     log_info "Tests passed" "\"component\":\"$component\",\"type\":\"java\",\"result\":\"success\""
     return 0
   else
-    local errors=$(echo "$output" | grep -c -iE "failure|error" || echo "0")
-    log_error "Tests failed" "\"component\":\"$component\",\"type\":\"java\",\"result\":\"failure\",\"errors\":$errors"
+    log_error "Tests failed" "\"component\":\"$component\",\"type\":\"java\",\"result\":\"failure\""
+    echo "$result" | grep -iE "failure|error|\[ERROR\]" | head -5 | while read -r line; do
+      log_error "  $line"
+    done
     return 1
   fi
 }
@@ -82,31 +88,46 @@ test_java() {
 test_python() {
   local component=$1 path=$2
   log_info "Running tests" "\"component\":\"$component\",\"type\":\"python\",\"phase\":\"test\""
+  
+  cd "$WORKDIR"
+  
+  # Copy common if exists
+  local build_path="$path"
+  if [[ -d "${PYTHON_PATH}/common" ]]; then
+    cp -r "${PYTHON_PATH}/common" "$path/common"
+  fi
+  
   cd "$WORKDIR/$path"
   
-  if [[ ! -f "requirements.txt" ]]; then
-    log_info "No requirements.txt found, skipping tests" "\"component\":\"$component\""
-    return 0
-  fi
+  # Run pytest in a pod
+  local pod_name="test-py-$$"
+  local result
   
-  local py=$(command -v python3 || command -v python)
-  if [[ -z "$py" ]]; then
-    log_warn "python not available, skipping tests" "\"component\":\"$component\""
-    return 0
-  fi
+  result=$(tar -cf - . | $OC run "$pod_name" --rm -i --restart=Never \
+    --image=python:3.11-slim \
+    -- sh -c '
+      cd /tmp && tar -xf -
+      pip install -q pytest 2>/dev/null
+      [ -f requirements.txt ] && pip install -q -r requirements.txt 2>/dev/null
+      python -m pytest -v --tb=line 2>&1
+      echo "EXIT:$?"
+    ' 2>&1)
   
-  $py -m pip install -q -r requirements.txt pytest 2>/dev/null
+  # Cleanup common
+  [[ -d "$WORKDIR/$path/common" ]] && rm -rf "$WORKDIR/$path/common"
   
-  local output
-  output=$($py -m pytest -v --tb=short 2>&1)
-  local status=$?
+  local exit_code=$(echo "$result" | grep -o 'EXIT:[0-9]*' | tail -1 | cut -d: -f2)
   
-  if [[ $status -eq 0 ]] || [[ $status -eq 5 ]]; then
+  # 0 = passed, 5 = no tests found
+  if [[ "$exit_code" == "0" ]] || [[ "$exit_code" == "5" ]]; then
     log_info "Tests passed" "\"component\":\"$component\",\"type\":\"python\",\"result\":\"success\""
     return 0
   else
-    local failed=$(echo "$output" | grep -c "FAILED" || echo "0")
+    local failed=$(echo "$result" | grep -c "FAILED" || echo "0")
     log_error "Tests failed" "\"component\":\"$component\",\"type\":\"python\",\"result\":\"failure\",\"failed\":$failed"
+    echo "$result" | grep -iE "FAILED|error|Error" | head -5 | while read -r line; do
+      log_error "  $line"
+    done
     return 1
   fi
 }
@@ -117,12 +138,21 @@ build_deploy() {
   log_info "Build started" "\"component\":\"$component\",\"phase\":\"build\",\"status\":\"running\""
   cd "$WORKDIR"
   
+  # For Python workers, copy common/ into build context
+  if [[ "$path" == *"workers"* ]] && [[ -d "${PYTHON_PATH}/common" ]]; then
+    log_info "Copying common/ to build context" "\"component\":\"$component\""
+    cp -r "${PYTHON_PATH}/common" "$path/common"
+  fi
+  
   local start_time=$(date +%s)
   local output
   output=$($OC start-build "$component" --from-dir="$path" --follow --wait 2>&1)
   local build_status=$?
   local end_time=$(date +%s)
   local duration=$((end_time - start_time))
+  
+  # Cleanup copied common/
+  [[ -d "$path/common" ]] && rm -rf "$path/common"
   
   if [[ $build_status -eq 0 ]]; then
     log_info "Build completed" "\"component\":\"$component\",\"phase\":\"build\",\"status\":\"success\",\"duration_seconds\":$duration"
