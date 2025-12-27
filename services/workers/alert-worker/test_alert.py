@@ -8,7 +8,7 @@ from datetime import datetime
 from main import parse_alert
 
 class TestParseAlert:
-    def test_parse_alert_full(self):
+    def test_parse_alert_full(self): 
         msg = {
             "createdAt": "2024-01-15T10:30:00Z",
             "alertId": "alert-001",

@@ -67,7 +67,7 @@ jobs:
             echo "::error::Mixed push rejected. Push Java OR Python changes separately."
             echo "Java: $JAVA" 
             echo "Python: $PYTHON"
-            exit 1
+            exit 1 
           fi
           
           # Output
