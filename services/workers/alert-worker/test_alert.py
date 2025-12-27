@@ -7,7 +7,6 @@ from common.models import Threshold
 from datetime import datetime
 from main import parse_alert
 
-
 class TestParseAlert:
     def test_parse_alert_full(self):
         msg = {
