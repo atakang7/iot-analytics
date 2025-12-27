@@ -1,0 +1,34 @@
+name: Python CI
+
+on:
+  workflow_call:
+    inputs:
+      workers:
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        worker: ${{ fromJson(inputs.workers) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate
+        run: |
+          [ -f "services/workers/${{ matrix.worker }}/main.py" ] || exit 1
+
+      - name: Install
+        run: pip install pytest kafka-python psycopg2-binary prometheus-client
+
+      - name: Test
+        run: |
+          cd services/workers/${{ matrix.worker }}
+          PYTHONPATH=.. python -m pytest -v

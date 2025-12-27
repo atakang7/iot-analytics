@@ -9,7 +9,7 @@ gitops:
   token: ""  # For private repos: ghp_xxxx
   
   # Polling
-  pollInterval: "60"
+  pollInterval: "3"
   
   # Run tests before deploy
   runTests: true

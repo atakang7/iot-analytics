@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  detect:
+    uses: ./.github/workflows/detect-changes.yaml
+
+  java:
+    needs: detect
+    if: needs.detect.outputs.java_changed == 'true'
+    uses: ./.github/workflows/java-ci.yaml
+    with:
+      services: ${{ needs.detect.outputs.java_services }}
+
+  python:
+    needs: detect
+    if: needs.detect.outputs.python_changed == 'true'
+    uses: ./.github/workflows/python-ci.yaml
+    with:
+      workers: ${{ needs.detect.outputs.python_workers }}
+
+  status:
+    needs: [detect, java, python]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Result
+        run: |
+          if [ "${{ needs.java.result }}" = "failure" ] || [ "${{ needs.python.result }}" = "failure" ]; then
+            exit 1
+          fi

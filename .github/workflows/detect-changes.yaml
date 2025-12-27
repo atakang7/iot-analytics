@@ -1,0 +1,68 @@
+name: Detect Changes
+
+on:
+  workflow_call:
+    outputs:
+      java_services:
+        value: ${{ jobs.detect.outputs.java_services }}
+      python_workers:
+        value: ${{ jobs.detect.outputs.python_workers }}
+      java_changed:
+        value: ${{ jobs.detect.outputs.java_changed }}
+      python_changed:
+        value: ${{ jobs.detect.outputs.python_changed }}
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      java_services: ${{ steps.changes.outputs.java_services }}
+      python_workers: ${{ steps.changes.outputs.python_workers }}
+      java_changed: ${{ steps.changes.outputs.java_changed }}
+      python_changed: ${{ steps.changes.outputs.python_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE=${{ github.event.pull_request.base.sha }}
+          else
+            BASE=${{ github.event.before }}
+          fi
+          
+          if [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            FILES=$(git ls-files)
+          else
+            FILES=$(git diff --name-only $BASE HEAD)
+          fi
+          
+          echo "Changed: $FILES"
+          
+          # Java
+          JAVA=""
+          for svc in ingestion device-registry; do
+            echo "$FILES" | grep -q "^services/$svc/" && JAVA="$JAVA $svc"
+          done
+          
+          # Python
+          PYTHON=""
+          if echo "$FILES" | grep -q "^services/workers/common/"; then
+            PYTHON="alert-worker kpi-job stream-worker telemetry-worker"
+          else
+            for wrk in alert-worker kpi-job stream-worker telemetry-worker; do
+              echo "$FILES" | grep -q "^services/workers/$wrk/" && PYTHON="$PYTHON $wrk"
+            done
+          fi
+          
+          # Output
+          JAVA=$(echo $JAVA | xargs)
+          PYTHON=$(echo $PYTHON | xargs)
+          
+          [ -n "$JAVA" ] && echo "java_services=$(echo $JAVA | tr ' ' '\n' | jq -R . | jq -sc .)" >> $GITHUB_OUTPUT || echo "java_services=[]" >> $GITHUB_OUTPUT
+          [ -n "$JAVA" ] && echo "java_changed=true" >> $GITHUB_OUTPUT || echo "java_changed=false" >> $GITHUB_OUTPUT
+          [ -n "$PYTHON" ] && echo "python_workers=$(echo $PYTHON | tr ' ' '\n' | jq -R . | jq -sc .)" >> $GITHUB_OUTPUT || echo "python_workers=[]" >> $GITHUB_OUTPUT
+          [ -n "$PYTHON" ] && echo "python_changed=true" >> $GITHUB_OUTPUT || echo "python_changed=false" >> $GITHUB_OUTPUT
