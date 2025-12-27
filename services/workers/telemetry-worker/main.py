@@ -16,8 +16,8 @@ from common.logger import get_logger
 
 log = get_logger("telemetry-worker")
 
-BATCH_SIZE = 100
-FLUSH_INTERVAL_SEC = 1.0
+BATCH_SIZE = 1000
+FLUSH_INTERVAL_SEC = 0.15
 
 
 def flush_batch(batch):
@@ -41,6 +41,7 @@ def flush_batch(batch):
         raise
     finally:
         cur.close()
+        conn.close()  # Close connection after use
 
 
 def main():
