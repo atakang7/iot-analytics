@@ -40,7 +40,8 @@ jobs:
             FILES=$(git diff --name-only $BASE HEAD)
           fi
           
-          echo "Changed: $FILES"
+          echo "Changed files:"
+          echo "$FILES"
           
           # Java
           JAVA=""
@@ -58,10 +59,18 @@ jobs:
             done
           fi
           
-          # Output
           JAVA=$(echo $JAVA | xargs)
           PYTHON=$(echo $PYTHON | xargs)
           
+          # REJECT: mixed push (both Java and Python)
+          if [ -n "$JAVA" ] && [ -n "$PYTHON" ]; then
+            echo "::error::Mixed push rejected. Push Java OR Python changes separately."
+            echo "Java: $JAVA"
+            echo "Python: $PYTHON"
+            exit 1
+          fi
+          
+          # Output
           [ -n "$JAVA" ] && echo "java_services=$(echo $JAVA | tr ' ' '\n' | jq -R . | jq -sc .)" >> $GITHUB_OUTPUT || echo "java_services=[]" >> $GITHUB_OUTPUT
           [ -n "$JAVA" ] && echo "java_changed=true" >> $GITHUB_OUTPUT || echo "java_changed=false" >> $GITHUB_OUTPUT
           [ -n "$PYTHON" ] && echo "python_workers=$(echo $PYTHON | tr ' ' '\n' | jq -R . | jq -sc .)" >> $GITHUB_OUTPUT || echo "python_workers=[]" >> $GITHUB_OUTPUT
