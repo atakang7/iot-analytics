@@ -65,7 +65,7 @@ jobs:
           # REJECT: mixed push (both Java and Python)
           if [ -n "$JAVA" ] && [ -n "$PYTHON" ]; then
             echo "::error::Mixed push rejected. Push Java OR Python changes separately."
-            echo "Java: $JAVA"
+            echo "Java: $JAVA" 
             echo "Python: $PYTHON"
             exit 1
           fi
