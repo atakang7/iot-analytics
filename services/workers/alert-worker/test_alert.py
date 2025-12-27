@@ -12,7 +12,7 @@ class TestParseAlert:
         msg = {
             "createdAt": "2024-01-15T10:30:00Z",
             "alertId": "alert-001",
-            "deviceId": "device-001",
+            "deviceId": "device-001", 
             "deviceType": "hvac",
             "alertType": "threshold_breach",
             "severity": "critical",
