@@ -9,6 +9,6 @@ public record Telemetry(
     String sensorId,
     String sensorType,
     Instant timestamp,
-    String unit,
+    String unit, 
     Map<String, Object> value
 ) {}
