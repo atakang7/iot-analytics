@@ -22,8 +22,10 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: gitops-script
+  name: gitops-scripts
 data:
+  lib.sh: |
+{{ .Files.Get "scripts/lib.sh" | indent 4 }}
   controller.sh: |
 {{ .Files.Get "scripts/controller.sh" | indent 4 }}
 ---
