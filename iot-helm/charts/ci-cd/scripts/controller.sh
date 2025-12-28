@@ -1,5 +1,5 @@
 #!/bin/bash
-# GitOps Controller v2 - CI-aware, parallel builds, helm deploy
+# GitOps Controller v3 - CI handoff, parallel builds, helm deploy with rollback
 set -o pipefail
 
 WORKDIR="/tmp/repo"
@@ -114,21 +114,28 @@ setup_all_cli() {
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # GITHUB API
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-get_latest_successful_run() {
+get_pending_deploy() {
+  # Find commits with pending deploy/cd status
   local response
   response=$(curl -s -H "Authorization: token $GIT_TOKEN" \
-    "$GITHUB_API/repos/$GITHUB_OWNER/$GITHUB_REPO_NAME/actions/runs?status=success&per_page=1")
+    "$GITHUB_API/repos/$GITHUB_OWNER/$GITHUB_REPO_NAME/commits?per_page=10")
   
-  local sha branch run_id
-  sha=$(echo "$response" | jq -r '.workflow_runs[0].head_sha // empty')
-  branch=$(echo "$response" | jq -r '.workflow_runs[0].head_branch // empty')
-  run_id=$(echo "$response" | jq -r '.workflow_runs[0].id // empty')
+  local sha
+  for sha in $(echo "$response" | jq -r '.[].sha'); do
+    local status_response
+    status_response=$(curl -s -H "Authorization: token $GIT_TOKEN" \
+      "$GITHUB_API/repos/$GITHUB_OWNER/$GITHUB_REPO_NAME/commits/$sha/status")
+    
+    local pending
+    pending=$(echo "$status_response" | jq -r '.statuses[] | select(.context == "deploy/cd" and .state == "pending") | .state')
+    
+    if [[ "$pending" == "pending" ]]; then
+      echo "$sha"
+      return 0
+    fi
+  done
   
-  if [[ -z "$sha" ]]; then
-    return 1
-  fi
-  
-  echo "$sha $branch $run_id"
+  return 1
 }
 
 get_changed_files() {
@@ -151,6 +158,30 @@ clone_repo() {
 }
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# HELM ROLLBACK
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+helm_rollback() {
+  log_info "Rolling back helm release" "\"release\":\"$HELM_RELEASE\""
+  
+  local current_revision
+  current_revision=$(helm history "$HELM_RELEASE" -n "$HELM_NAMESPACE" -o json | jq -r '.[-1].revision')
+  
+  if [[ "$current_revision" -gt 1 ]]; then
+    local prev_revision=$((current_revision - 1))
+    if helm rollback "$HELM_RELEASE" "$prev_revision" -n "$HELM_NAMESPACE" --wait --timeout 120s; then
+      log_info "Rollback success" "\"revision\":\"$prev_revision\""
+      return 0
+    else
+      log_error "Rollback failed"
+      return 1
+    fi
+  else
+    log_warn "No previous revision to rollback to"
+    return 1
+  fi
+}
+
+#━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # BUILD & DEPLOY (per component)
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 deploy_component() {
@@ -159,7 +190,6 @@ deploy_component() {
   local image_ref=""
   
   log_info "Starting deploy" "\"component\":\"$component\",\"type\":\"$type\",\"sha\":\"${sha:0:12}\""
-  update_github_status "$sha" "pending" "deploy/$component" "Building..."
   
   cd "$WORKDIR"
   
@@ -180,8 +210,7 @@ deploy_component() {
   
   if [[ $build_status -ne 0 ]]; then
     log_error "Build failed" "\"component\":\"$component\",\"duration\":$build_duration"
-    update_github_status "$sha" "failure" "deploy/$component" "Build failed"
-    echo "failure" > "$job_file"
+    echo "failure:build" > "$job_file"
     return 1
   fi
   
@@ -193,8 +222,7 @@ deploy_component() {
   
   #── IMAGE SCAN ─────────────────────────────────────────────────────────────
   if [[ "$IMAGE_SCAN_ENABLED" == "true" ]]; then
-    log_info "Scanning image" "\"component\":\"$component\",\"image\":\"$image_ref\""
-    update_github_status "$sha" "pending" "deploy/$component" "Scanning..."
+    log_info "Scanning image" "\"component\":\"$component\""
     
     local scan_result
     scan_result=$(trivy image --severity CRITICAL --exit-code 1 --quiet "$image_ref" 2>&1)
@@ -202,8 +230,7 @@ deploy_component() {
     
     if [[ $scan_status -ne 0 ]] && [[ "$IMAGE_SCAN_FAIL_CRITICAL" == "true" ]]; then
       log_error "Critical vulnerabilities found" "\"component\":\"$component\""
-      update_github_status "$sha" "failure" "deploy/$component" "Security scan failed"
-      echo "failure" > "$job_file"
+      echo "failure:scan" > "$job_file"
       return 1
     fi
     
@@ -212,7 +239,6 @@ deploy_component() {
   
   #── HELM DEPLOY ────────────────────────────────────────────────────────────
   log_info "Helm upgrade" "\"component\":\"$component\""
-  update_github_status "$sha" "pending" "deploy/$component" "Deploying..."
   
   local helm_output
   helm_output=$(helm upgrade "$HELM_RELEASE" "$WORKDIR/$HELM_CHART_PATH" \
@@ -223,9 +249,8 @@ deploy_component() {
   local helm_status=$?
   
   if [[ $helm_status -ne 0 ]]; then
-    log_error "Helm upgrade failed" "\"component\":\"$component\",\"error\":\"${helm_output:0:200}\""
-    update_github_status "$sha" "failure" "deploy/$component" "Deploy failed"
-    echo "failure" > "$job_file"
+    log_error "Helm upgrade failed" "\"component\":\"$component\""
+    echo "failure:helm" > "$job_file"
     return 1
   fi
   
@@ -248,13 +273,11 @@ deploy_component() {
   
   if [[ $smoke_ok -eq 0 ]]; then
     log_warn "Smoke test failed" "\"component\":\"$component\""
-    update_github_status "$sha" "failure" "deploy/$component" "Smoke test failed"
-    echo "failure" > "$job_file"
+    echo "failure:smoke" > "$job_file"
     return 1
   fi
   
   log_info "Smoke test passed" "\"component\":\"$component\""
-  update_github_status "$sha" "success" "deploy/$component" "Deployed"
   echo "success" > "$job_file"
   return 0
 }
@@ -310,6 +333,7 @@ process_commit() {
   # Nothing to deploy
   if [[ ${#pids[@]} -eq 0 ]]; then
     log_info "No components to deploy"
+    update_github_status "$sha" "success" "deploy/cd" "No components to deploy"
     return 0
   fi
   
@@ -333,17 +357,27 @@ process_commit() {
     fi
   done
   
-  # Notify
   components=$(echo "$components" | xargs)
+  success_list=$(echo "$success_list" | xargs)
+  fail_list=$(echo "$fail_list" | xargs)
+  
+  # Final status
   if [[ $failed -eq 0 ]]; then
     log_info "All deployments succeeded" "\"components\":\"$components\""
+    update_github_status "$sha" "success" "deploy/cd" "Deployed: $success_list"
     notify_slack "success" "Deployed: $success_list" "$components"
+    return 0
   else
     log_error "Some deployments failed" "\"failed\":\"$fail_list\",\"succeeded\":\"$success_list\""
+    update_github_status "$sha" "failure" "deploy/cd" "Failed: $fail_list"
     notify_slack "failure" "Failed: $fail_list | Succeeded: $success_list" "$components"
+    
+    # Rollback
+    log_info "Initiating rollback"
+    helm_rollback
+    
+    return 1
   fi
-  
-  return $failed
 }
 
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -355,37 +389,26 @@ main() {
   
   setup_all_cli || { log_error "CLI setup failed"; exit 1; }
   
-  local last_sha=""
-  [[ -f "$STATE_FILE" ]] && last_sha=$(cat "$STATE_FILE")
-  [[ -n "$last_sha" ]] && log_info "Resuming" "\"last_sha\":\"${last_sha:0:12}\""
-  
   while true; do
-    local run_info sha branch run_id
-    run_info=$(get_latest_successful_run)
+    local sha
+    sha=$(get_pending_deploy)
     
-    if [[ -z "$run_info" ]]; then
-      log_warn "No successful CI runs found"
+    if [[ -z "$sha" ]]; then
       sleep "$POLL_INTERVAL"
       continue
     fi
     
-    read sha branch run_id <<< "$run_info"
+    log_info "Found pending deploy" "\"sha\":\"${sha:0:12}\""
     
-    # Already processed?
-    if [[ "$sha" == "$last_sha" ]]; then
-      sleep "$POLL_INTERVAL"
-      continue
-    fi
-    
-    log_info "New CI success" "\"sha\":\"${sha:0:12}\",\"branch\":\"$branch\",\"run_id\":\"$run_id\""
+    # Update status to show we're working on it
+    update_github_status "$sha" "pending" "deploy/cd" "CD controller processing..."
     
     # Clone and deploy
     if clone_repo "$sha"; then
       process_commit "$sha"
-      last_sha="$sha"
-      echo "$last_sha" > "$STATE_FILE"
     else
       log_error "Clone failed"
+      update_github_status "$sha" "failure" "deploy/cd" "Clone failed"
     fi
     
     sleep "$POLL_INTERVAL"
