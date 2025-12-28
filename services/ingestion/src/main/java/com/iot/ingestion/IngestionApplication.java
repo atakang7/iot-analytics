@@ -9,3 +9,4 @@ public class IngestionApplication {
         SpringApplication.run(IngestionApplication.class, args);
     }
 }
+ 

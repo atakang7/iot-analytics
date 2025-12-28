@@ -28,7 +28,11 @@ jobs:
 
   handoff-to-cd:
     needs: [detect, java, python]
-    if: always() && !contains(needs.*.result, 'failure')
+    # Only handoff if there are deployable components AND no failures
+    if: |
+      always() && 
+      !contains(needs.*.result, 'failure') &&
+      (needs.detect.outputs.java_changed == 'true' || needs.detect.outputs.python_changed == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Set pending deploy status
