@@ -17,8 +17,7 @@ from common.logger import get_logger
 log = get_logger("telemetry-worker")
 
 BATCH_SIZE = 1000
-FLUSH_INTERVAL_SEC = 0.15
-
+FLUSH_INTERVAL_SEC = 0.14
 
 def flush_batch(batch):
     """Insert batch in single transaction"""
