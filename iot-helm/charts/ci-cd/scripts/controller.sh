@@ -152,11 +152,28 @@ clone_repo() {
   local url="$GIT_REPO"
   [[ -n "$GIT_TOKEN" ]] && url="${url/https:\/\//https://${GIT_TOKEN}@}"
   
+  log_info "Cloning repo" "\"sha\":\"${sha:0:12}\""
+  
   rm -rf "$WORKDIR"
-  git clone --depth 1 -q "$url" "$WORKDIR" 2>/dev/null || return 1
-  cd "$WORKDIR" && git fetch --depth 1 origin "$sha" -q && git checkout "$sha" -q 2>/dev/null
+  mkdir -p "$WORKDIR"
+  cd "$WORKDIR"
+  
+  git init -q
+  git remote add origin "$url"
+  
+  if ! git fetch --depth 1 origin "$sha" 2>&1; then
+    log_error "Git fetch failed"
+    return 1
+  fi
+  
+  if ! git checkout FETCH_HEAD -q 2>&1; then
+    log_error "Git checkout failed"
+    return 1
+  fi
+  
+  log_info "Clone success" "\"sha\":\"${sha:0:12}\""
+  return 0
 }
-
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # HELM ROLLBACK
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
