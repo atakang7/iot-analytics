@@ -132,21 +132,20 @@ notify_slack() {
 #━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 clone_repo() {
   local sha="$1"
-  local url="$GIT_REPO"
-  [[ -n "$GIT_TOKEN" ]] && url="${url/https:\/\//https://${GIT_TOKEN}@}"
   
-  log_info "Cloning" "\"sha\":\"${sha:0:12}\""
+  log_info "Downloading" "\"sha\":\"${sha:0:12}\""
   
   rm -rf "$WORKDIR"
   mkdir -p "$WORKDIR"
-  cd "$WORKDIR" || return 1
   
-  git init -q || return 1
-  git remote add origin "$url" || return 1
-  git fetch --depth 1 origin "$sha" 2>/dev/null || return 1
-  git checkout FETCH_HEAD -q || return 1
+  # Download tarball via GitHub API
+  curl -sL -H "Authorization: token $GIT_TOKEN" \
+    "$GITHUB_API/repos/$GITHUB_OWNER/$GITHUB_REPO_NAME/tarball/$sha" | \
+    tar -xz -C "$WORKDIR" --strip-components=1
   
-  log_info "Clone done"
+  [[ $? -ne 0 ]] && { log_error "Download failed"; return 1; }
+  
+  log_info "Download done"
   return 0
 }
 
