@@ -1,38 +1,33 @@
-# ci-cd/values.yaml
-
 gitops:
   enabled: true
   
-  # Git repository
-  repo: "https://github.com/atakang7/iot-analytics.git"
-  branch: "main"
-  token: ""  # For private repos: ghp_xxxx
+  github:
+    owner: "atakang7"
+    repoName: "iot-analytics"
+    repo: "https://github.com/atakang7/iot-analytics.git"
   
-  # Polling
-  pollInterval: "3"
+  pollInterval: "30"
   
-  # Run tests before deploy
-  runTests: true
+  image: "alpine/k8s:1.29.0"
   
-  # Components to watch and deploy
-  # Path is relative to repo root
+  helm:
+    release: "iot"
+    chartPath: "iot-helm"
+  
+  imageScan:
+    enabled: true
+    failOnCritical: true
+  
   java:
-    path: "services"  # services/ingestion, services/device-registry
+    path: "services"
     services:
       - ingestion
       - device-registry
   
   python:
-    path: "services/workers"  # services/workers/telemetry-worker, etc
+    path: "services/workers"
     workers:
       - telemetry-worker
-      - stream-worker
       - alert-worker
-  
-  # Notifications (optional)
-  slack: ""
-  
-  # Image
-  # Default: bitnami/git (lightweight, no test tools)
-  # For tests: use custom image with maven/python or skip tests
-  image: "bitnami/git:latest"
+      - stream-worker
+      - kpi-job

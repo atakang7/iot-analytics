@@ -4,14 +4,20 @@ kind: ConfigMap
 metadata:
   name: gitops-config
 data:
-  GIT_REPO: {{ .Values.gitops.repo | quote }}
-  GIT_BRANCH: {{ .Values.gitops.branch | quote }}
+  GIT_REPO: {{ .Values.gitops.github.repo | quote }}
   POLL_INTERVAL: {{ .Values.gitops.pollInterval | quote }}
+  GITHUB_API: "https://api.github.com"
+  GITHUB_OWNER: {{ .Values.gitops.github.owner | quote }}
+  GITHUB_REPO_NAME: {{ .Values.gitops.github.repoName | quote }}
   JAVA_PATH: {{ .Values.gitops.java.path | default "services" | quote }}
   JAVA_SERVICES: {{ .Values.gitops.java.services | join " " | quote }}
-  PYTHON_PATH: {{ .Values.gitops.python.path | default "workers" | quote }}
+  PYTHON_PATH: {{ .Values.gitops.python.path | default "services/workers" | quote }}
   PYTHON_WORKERS: {{ .Values.gitops.python.workers | join " " | quote }}
-  RUN_TESTS: {{ .Values.gitops.runTests | default "false" | quote }}
+  HELM_RELEASE: {{ .Values.gitops.helm.release | default "iot" | quote }}
+  HELM_CHART_PATH: {{ .Values.gitops.helm.chartPath | default "iot-helm" | quote }}
+  HELM_NAMESPACE: {{ .Release.Namespace | quote }}
+  IMAGE_SCAN_ENABLED: {{ .Values.gitops.imageScan.enabled | default "true" | quote }}
+  IMAGE_SCAN_FAIL_CRITICAL: {{ .Values.gitops.imageScan.failOnCritical | default "true" | quote }}
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -20,15 +26,6 @@ metadata:
 data:
   controller.sh: |
 {{ .Files.Get "scripts/controller.sh" | indent 4 }}
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: gitops-secret
-type: Opaque
-stringData:
-  GIT_TOKEN: {{ .Values.gitops.token | default "" | quote }}
-  SLACK_WEBHOOK: {{ .Values.gitops.slack | default "" | quote }}
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -69,16 +66,25 @@ spec:
       serviceAccountName: gitops-controller
       containers:
         - name: controller
-          image: {{ .Values.gitops.image | default "bitnami/git:latest" }}
+          image: {{ .Values.gitops.image | default "alpine/k8s:1.29.0" }}
           command: ["bash", "/scripts/controller.sh"]
           env:
             - name: HOME
               value: /tmp
+            - name: GIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gitops-secret
+                  key: GIT_TOKEN
+            - name: SLACK_WEBHOOK
+              valueFrom:
+                secretKeyRef:
+                  name: gitops-secret
+                  key: SLACK_WEBHOOK
+                  optional: true
           envFrom:
             - configMapRef:
                 name: gitops-config
-            - secretRef:
-                name: gitops-secret
           volumeMounts:
             - name: scripts
               mountPath: /scripts
