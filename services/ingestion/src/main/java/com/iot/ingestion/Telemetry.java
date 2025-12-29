@@ -12,4 +12,4 @@ public record Telemetry(
     String unit, 
     Map<String, Object> value
 ) {}
- 
+  
