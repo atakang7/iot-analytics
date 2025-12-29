@@ -34,51 +34,6 @@ kind: ServiceAccount
 metadata:
   name: gitops-controller
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: gitops-controller
-rules:
-  # Helm release tracking (required)
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  
-  # Typical app resources - adjust to what your chart actually deploys
-  - apiGroups: [""]
-    resources: ["configmaps", "services", "serviceaccounts", "persistentvolumeclaims"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["apps"]
-    resources: ["deployments", "statefulsets", "replicasets"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  
-  # If your chart creates RBAC
-  - apiGroups: ["rbac.authorization.k8s.io"]
-    resources: ["roles", "rolebindings"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  
-  # If using ingress/networking
-  - apiGroups: ["networking.k8s.io"]
-    resources: ["ingresses"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  
-  # If using HPA
-  - apiGroups: ["autoscaling"]
-    resources: ["horizontalpodautoscalers"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: gitops-controller
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: gitops-controller
-subjects:
-  - kind: ServiceAccount
-    name: gitops-controller
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
