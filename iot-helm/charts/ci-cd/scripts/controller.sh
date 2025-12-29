@@ -25,11 +25,17 @@ deploy_component() {
   local job_file="$JOBS_DIR/$component"
   
   log_info "DEPLOY" "\"component\":\"$component\",\"type\":\"$type\""
+  update_github_status "$sha" "pending" "deploy/$component" "Building..."
   
   cd "$WORKDIR" || { echo "failure:cd" > "$job_file"; return 1; }
   
   # Verify path
-  [[ ! -d "$path" ]] && { log_error "Path missing: $path"; echo "failure:path" > "$job_file"; return 1; }
+  if [[ ! -d "$path" ]]; then
+    log_error "Path missing: $path"
+    update_github_status "$sha" "failure" "deploy/$component" "Path not found: $path"
+    echo "failure:path" > "$job_file"
+    return 1
+  fi
   
   # Python: copy common
   if [[ "$type" == "python" ]] && [[ -d "$PYTHON_PATH/common" ]]; then
@@ -41,6 +47,7 @@ deploy_component() {
   bc_out=$(oc get bc "$component" -n "$HELM_NAMESPACE" 2>&1)
   if [[ $? -ne 0 ]]; then
     log_error "No BuildConfig" "\"error\":\"$(json_escape "$bc_out")\""
+    update_github_status "$sha" "failure" "deploy/$component" "BuildConfig not found"
     [[ -d "$path/common" ]] && rm -rf "$path/common"
     echo "failure:no_bc" > "$job_file"
     return 1
@@ -48,21 +55,26 @@ deploy_component() {
   
   # Build
   log_info "Building" "\"component\":\"$component\""
+  update_github_status "$sha" "pending" "deploy/$component" "Building image..."
+  local build_start=$(date +%s)
   local build_out
   build_out=$(oc start-build "$component" -n "$HELM_NAMESPACE" --from-dir="$path" --follow --wait 2>&1)
   local build_status=$?
+  local build_duration=$(($(date +%s) - build_start))
   
   [[ -d "$path/common" ]] && rm -rf "$path/common"
   
   if [[ $build_status -ne 0 ]]; then
     log_error "Build failed" "\"output\":\"$(json_escape "${build_out:0:500}")\""
+    update_github_status "$sha" "failure" "deploy/$component" "Build failed (${build_duration}s)"
     echo "failure:build" > "$job_file"
     return 1
   fi
-  log_info "Build done" "\"component\":\"$component\""
+  log_info "Build done" "\"component\":\"$component\",\"duration\":\"${build_duration}s\""
   
   # Helm upgrade
   log_info "Helm upgrade" "\"component\":\"$component\""
+  update_github_status "$sha" "pending" "deploy/$component" "Deploying (built in ${build_duration}s)..."
   local helm_out
   helm_out=$(helm upgrade "$HELM_RELEASE" "$WORKDIR/$HELM_CHART_PATH" \
     -n "$HELM_NAMESPACE" --reuse-values \
@@ -70,6 +82,7 @@ deploy_component() {
   
   if [[ $? -ne 0 ]]; then
     log_error "Helm failed" "\"output\":\"$(json_escape "${helm_out:0:500}")\""
+    update_github_status "$sha" "failure" "deploy/$component" "Helm upgrade failed"
     echo "failure:helm" > "$job_file"
     return 1
   fi
@@ -78,6 +91,7 @@ deploy_component() {
   local health="/health"
   [[ "$type" == "java" ]] && health="/actuator/health"
   
+  update_github_status "$sha" "pending" "deploy/$component" "Smoke testing..."
   local ok=0
   for i in {1..5}; do
     curl -sf "http://$component:8080$health" >/dev/null 2>&1 && { ok=1; break; }
@@ -86,11 +100,14 @@ deploy_component() {
   
   if [[ $ok -eq 0 ]]; then
     log_error "Smoke failed" "\"component\":\"$component\""
+    update_github_status "$sha" "failure" "deploy/$component" "Health check failed"
     echo "failure:smoke" > "$job_file"
     return 1
   fi
   
+  local total_duration=$(($(date +%s) - build_start))
   log_info "DEPLOY OK" "\"component\":\"$component\""
+  update_github_status "$sha" "success" "deploy/$component" "Deployed in ${total_duration}s"
   echo "success" > "$job_file"
   return 0
 }
