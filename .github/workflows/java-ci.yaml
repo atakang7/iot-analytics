@@ -8,7 +8,7 @@ on:
         type: string
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
@@ -27,7 +27,12 @@ jobs:
         run: |
           [ -f "services/${{ matrix.service }}/pom.xml" ] || exit 1
 
-      - name: Test & Build
+      - name: Test
         run: |
           cd services/${{ matrix.service }}
-          mvn verify -B -q
+          mvn test -B
+
+      - name: Build
+        run: |
+          cd services/${{ matrix.service }}
+          mvn package -DskipTests -B -q
