@@ -8,10 +8,9 @@ on:
         type: string
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
       matrix:
         worker: ${{ fromJson(inputs.workers) }}
     steps:
@@ -21,14 +20,45 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Validate
-        run: |
-          [ -f "services/workers/${{ matrix.worker }}/main.py" ] || exit 1
+      - name: Install Linters
+        run: pip install flake8 black
 
-      - name: Install
-        run: pip install pytest kafka-python psycopg2-binary prometheus-client
-
-      - name: Test
+      - name: Flake8
         run: |
           cd services/workers/${{ matrix.worker }}
-          PYTHONPATH=.. python -m pytest -v
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Black (format check)
+        run: |
+          cd services/workers/${{ matrix.worker }}
+          black --check . || echo "::warning::Code not formatted with black"
+
+  unit-test:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        worker: ${{ fromJson(inputs.workers) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pip install pytest pytest-cov kafka-python psycopg2-binary prometheus-client
+
+      - name: Run Unit Tests
+        run: |
+          cd services/workers/${{ matrix.worker }}
+          PYTHONPATH=.. python -m pytest -v --tb=short --cov=. --cov-report=term
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "### Test Results for ${{ matrix.worker }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cd services/workers/${{ matrix.worker }}
+          PYTHONPATH=.. python -m pytest -v --tb=line 2>&1 | tail -20 >> $GITHUB_STEP_SUMMARY || true
+          echo '```' >> $GITHUB_STEP_SUMMARY

@@ -8,10 +8,9 @@ on:
         type: string
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: true
       matrix:
         service: ${{ fromJson(inputs.services) }}
     steps:
@@ -23,16 +22,61 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Validate
+      - name: Checkstyle
         run: |
-          [ -f "services/${{ matrix.service }}/pom.xml" ] || exit 1
+          cd services/${{ matrix.service }}
+          mvn checkstyle:check -B || echo "::warning::Checkstyle issues found"
 
-      - name: Test
+  unit-test:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(inputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Run Unit Tests
         run: |
           cd services/${{ matrix.service }}
           mvn test -B
 
-      - name: Build
+      - name: Test Report
+        if: always()
+        run: |
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          cd services/${{ matrix.service }}
+          if [ -d target/surefire-reports ]; then
+            cat target/surefire-reports/*.txt >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+          fi
+
+  build:
+    needs: unit-test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: ${{ fromJson(inputs.services) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build JAR
         run: |
           cd services/${{ matrix.service }}
-          mvn package -DskipTests -B -q
+          mvn package -DskipTests -B
+
+      - name: Build Summary
+        run: |
+          echo "### Build Artifacts" >> $GITHUB_STEP_SUMMARY
+          ls -lh services/${{ matrix.service }}/target/*.jar >> $GITHUB_STEP_SUMMARY
