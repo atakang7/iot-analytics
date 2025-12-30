@@ -53,7 +53,7 @@ def main():
 
             alerts_stored.labels(
                 alert_type=msg["alertType"],
-                severity=msg["severity"]
+                severity=msg["severity"] 
             ).inc()
 
             alerts_active.labels(
