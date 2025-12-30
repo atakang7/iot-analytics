@@ -40,7 +40,7 @@ def send_one(i):
         'sensorType': 'temperature',
         'timestamp': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
         'unit': 'celsius',
-        'value': {'reading': 42.5}
+        'value': {'value': 150.0}
     }).encode()
     
     try:

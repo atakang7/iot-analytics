@@ -49,7 +49,7 @@ def main():
     for msg in consumer:
         try:
             row = parse_alert(msg)
-            upsert_one("alerts", row, conflict_cols=["alert_id"])
+            upsert_one("alerts", row, conflict_cols=["alert_id", "created_at"])
 
             alerts_stored.labels(
                 alert_type=msg["alertType"],
@@ -69,7 +69,7 @@ def main():
                 "start_time": time.time(),
                 "end_time": time.time(),
                 "duration": time.time() - time.time(),
-                "worker_id": uuid.uuid4(),
+                "worker_id": str(uuid.uuid4()),
             }})
 
             try:
@@ -86,7 +86,7 @@ def main():
                 "start_time": time.time(),
                 "end_time": time.time(),
                 "duration": time.time() - time.time(),
-                "worker_id": uuid.uuid4(),
+                "worker_id": str(uuid.uuid4()),
             }})
             processing_errors.labels(worker="alert", error_type=type(e).__name__).inc()
 
