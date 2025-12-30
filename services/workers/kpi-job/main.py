@@ -13,7 +13,7 @@ from collections import defaultdict
 
 from common.db import query, execute, upsert_one
 from common.metrics import kpis_computed, kpi_job_duration, push_metrics
-from common.logger import get_logger
+from common.logger import get_logger 
 
 
 log = get_logger("kpi-job")
