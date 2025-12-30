@@ -128,7 +128,7 @@ def run_job():
                 "window_start": window_start,
                 "window_end": window_end,
                 "sample_count": len(values),
-            }, conflict_cols=["device_id", "kpi_name", "window_start"])
+            }, conflict_cols=["device_id", "kpi_name", "window_start", "created_at"])
 
             kpis_computed.labels(kpi_name=full_kpi_name).inc()
             kpi_count += 1
