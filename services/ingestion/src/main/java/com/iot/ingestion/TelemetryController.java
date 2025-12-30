@@ -19,7 +19,7 @@ public class TelemetryController {
         this.kafka = kafka;
         this.mapper = mapper;
     }
-
+ 
     @PostMapping
     public ResponseEntity<Map<String, String>> ingest(@RequestBody Telemetry telemetry) {
         try {
