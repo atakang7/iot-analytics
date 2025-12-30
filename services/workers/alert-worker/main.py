@@ -8,7 +8,7 @@ import time
 import uuid
 sys.path.insert(0, "/app")
 
-from datetime import datetime
+from datetime import datetime 
 
 from common.config import KAFKA_ALERTS_TOPIC
 from common.kafka import KafkaConsumer
