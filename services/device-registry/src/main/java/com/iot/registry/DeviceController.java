@@ -35,7 +35,7 @@ public class DeviceController {
 
     @PutMapping("/{id}")
     public ResponseEntity<Device> update(@PathVariable UUID id, @RequestBody Device device) {
-        return repository.findById(id)
+        return repository.findById(id) 
                 .map(existing -> {
                     existing.setName(device.getName());
                     existing.setType(device.getType());
