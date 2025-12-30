@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/devices")
+@RequestMapping("/device")
 public class DeviceController {
 
     private final DeviceRepository repository;

@@ -87,6 +87,9 @@ deploy_component() {
     return 1
   fi
   
+  # Force pod refresh (using :latest tag)
+  kubectl rollout restart deployment/"$component" -n "$HELM_NAMESPACE" 2>/dev/null || true
+  
   # Smoke test - trust Helm --wait (uses readiness probe)
   # Just verify service DNS resolves and pod accepts connections
   update_github_status "$sha" "pending" "deploy/$component" "Verifying..."
