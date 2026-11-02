@@ -8,3 +8,5 @@ venv/
 .idea/
 .vscode/
 .github-token
+.env.*
+!.env.example
