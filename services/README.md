@@ -21,8 +21,13 @@ cd ingestion && mvn clean package -DskipTests && cd ..
 ## Run
 
 ```bash
-docker-compose up --build
+cd services
+printf 'IOT_DB_PASSWORD=%s\n' "$(openssl rand -hex 32)" > .env
+chmod 600 .env
+docker compose up --build
 ```
+
+Compose now requires a unique `IOT_DB_PASSWORD`; all published development ports bind to `127.0.0.1` only. The `.env` file is ignored by Git. **Existing TimescaleDB volumes retain their old password**: if upgrading an existing environment, rotate the `iot` PostgreSQL role password to match the new `.env` value before restarting dependent services. Do not delete persistent volumes just to change credentials.
 
 ## Test
 
