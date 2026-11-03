@@ -21,7 +21,7 @@ bash -n simulator/*.sh
 | Var | Default | What |
 | --- | --- | --- |
 | `NAMESPACE` | `atakangul-dev` | OpenShift namespace |
-| `DEVICE_ID` | Generated | Logical source identifier |
+| `DEVICE_ID` | `motor-001` in deploy script | Logical source identifier |
 | `DEVICE_TYPE` | `motor` | Sensor preset |
 | `INTERVAL` | `5` | Seconds between readings |
 | `INGESTION_URL` | `http://ingestion:8081/telemetry` | Target HTTP API |
