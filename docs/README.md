@@ -16,6 +16,7 @@ Use these for specific operations on an existing checkout.
 - [Backup and rehearse recovery](how-to/backup-and-restore.md)
 - [Test Kubernetes and observability](how-to/test-kubernetes.md)
 - [Build and promote an immutable release](how-to/publish-release.md)
+- [Inspect an OpenShift lab deployment](how-to/openshift-lab.md)
 
 ## Reference
 
