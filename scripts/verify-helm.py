@@ -63,9 +63,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("rendered", type=Path)
     parser.add_argument("--routes-enabled", action="store_true")
+    parser.add_argument("--export-prometheus-config", type=Path)
     args = parser.parse_args()
     docs = list(yaml.safe_load_all(args.rendered.read_text()))
     validate_manifests(docs, public_routes=args.routes_enabled)
+    if args.export_prometheus_config is not None:
+        config = next(d for d in docs if d and d.get("kind") == "ConfigMap" and d["metadata"]["name"] == "prometheus-config")
+        args.export_prometheus_config.write_text(config["data"]["prometheus.yml"])
     print(f"PASS: {len([x for x in docs if x])} Helm resources, scrape targets, worker metrics, route defaults")
 
 

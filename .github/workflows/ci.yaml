@@ -89,7 +89,11 @@ jobs:
           helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml > /tmp/iot-rendered.yaml
           test -s /tmp/iot-rendered.yaml
           python3 -m pip install --quiet PyYAML==6.0.2
-          python3 scripts/verify-helm.py /tmp/iot-rendered.yaml
+          python3 scripts/verify-helm.py /tmp/iot-rendered.yaml \
+            --export-prometheus-config /tmp/iot-prometheus.yml
+          docker run --rm --entrypoint /bin/promtool \
+            -v /tmp/iot-prometheus.yml:/etc/prometheus/prometheus.yml:ro \
+            prom/prometheus:v3.15.1 check config /etc/prometheus/prometheus.yml
           helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml \
             --set apps.routes.enabled=true --set monitoring.routes.grafana=true > /tmp/iot-optional-routes.yaml
           python3 scripts/verify-helm.py /tmp/iot-optional-routes.yaml --routes-enabled
