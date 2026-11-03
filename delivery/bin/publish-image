@@ -1,67 +1,31 @@
 #!/usr/bin/env bash
-# Publish exactly the OCI bytes scanned by Trivy, then keyless-sign their digest.
-# Called only by .github/workflows/publish.yaml on the verified main commit.
+# Publish one exact Trivy-scanned OCI archive and keyless-sign the immutable digest.
 set -Eeuo pipefail
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+source "$ROOT/delivery/lib/oci.sh"
 
-service="${1:?usage: publish-image SERVICE}"
-case "$service" in
-  ingestion|device-registry|telemetry-worker|stream-worker|alert-worker|kpi-job) ;;
-  *) echo "Unknown service: $service" >&2; exit 2 ;;
-esac
-
-: "${GITHUB_SHA:?Missing release commit}"
-: "${GITHUB_REPOSITORY:?Missing repository identity}"
-: "${REGISTRY_TOKEN:?Missing registry token}"
-: "${REGISTRY_USER:?Missing registry user}"
-: "${RUNNER_TEMP:?Missing runner temporary directory}"
-: "${GITHUB_WORKSPACE:?Missing repository checkout}"
-[[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "Only main can publish" >&2; exit 1; }
-[[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Invalid source SHA" >&2; exit 1; }
-
+service="$1"
+test -n "$service"
+: "$GITHUB_SHA" "$GITHUB_REPOSITORY" "$REGISTRY_TOKEN" "$REGISTRY_USER"
+: "$RUNNER_TEMP" "$GITHUB_WORKSPACE" "$GITHUB_REF"
+[[ "$GITHUB_REF" == "refs/heads/main" && "$GITHUB_SHA" =~ ^[a-f0-9]{40}$ ]] || {
+  echo "Only the verified main commit may publish" >&2; exit 1;
+}
 cd "$GITHUB_WORKSPACE"
-if [[ "$service" == "ingestion" || "$service" == "device-registry" ]]; then
-  context="services/$service"
-  dockerfile="services/$service/Dockerfile"
-else
-  context="services/workers"
-  dockerfile="services/workers/$service/Dockerfile"
-fi
-
 output="$RUNNER_TEMP/iot-publish"
 mkdir -p "$output"
 archive="$output/$service.oci.tar"
+oci_build "$service" "$archive"
+oci_scan "$archive" "$output/$service.sbom.json"
 
-# The detached OCI archive is the only artifact that can be published.
-docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
-  --label "org.opencontainers.image.revision=$GITHUB_SHA" \
-  --file "$dockerfile" --output "type=oci,dest=$archive" "$context"
-test -s "$archive"
-
-# Security check and SBOM both inspect the artifact BEFORE publication.
-trivy image --input "$archive" --scanners vuln \
-  --severity CRITICAL --exit-code 1
-trivy image --input "$archive" --format cyclonedx \
-  --output "$output/$service.sbom.json"
-
-image="ghcr.io/${GITHUB_REPOSITORY,,}/$service"
-tag="sha-$GITHUB_SHA"
+lower_repo="$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+image="ghcr.io/$lower_repo/$service"
 printf '%s' "$REGISTRY_TOKEN" | skopeo login ghcr.io \
   --username "$REGISTRY_USER" --password-stdin >/dev/null
-
-source_digest="sha256:$(skopeo inspect --raw "oci-archive:$archive" | sha256sum | cut -d' ' -f1)"
-skopeo copy --all --preserve-digests \
-  --digestfile "$output/$service.digest" \
-  "oci-archive:$archive" "docker://$image:$tag"
+oci_copy "$archive" "$image" "sha-$GITHUB_SHA" "$output/$service.digest" secure
 digest="$(cat "$output/$service.digest")"
-[[ "$digest" == "$source_digest" ]] || {
-  echo "Registry digest differs from scanned OCI manifest" >&2; exit 1;
-}
-remote_digest="sha256:$(skopeo inspect --raw "docker://$image@$digest" | sha256sum | cut -d' ' -f1)"
-[[ "$remote_digest" == "$digest" ]] || {
-  echo "Published registry manifest failed digest verification" >&2; exit 1;
-}
+oci_verify "$archive" "$image" "$digest" secure
 
-# GitHub OIDC identity is tied to the trusted main-branch publishing workflow.
 ref="$image@$digest"
 identity="https://github.com/$GITHUB_REPOSITORY/.github/workflows/publish.yaml@refs/heads/main"
 cosign sign --yes "$ref"
@@ -69,12 +33,11 @@ cosign verify --certificate-identity "$identity" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com "$ref" >/dev/null
 
 python3 - "$service" "$GITHUB_SHA" "$ref" "$output/$service.identity.json" <<'PY'
-import json
-import sys
+import json, sys
 from pathlib import Path
 service, commit, image, output = sys.argv[1:]
 Path(output).write_text(json.dumps({
     "commit": commit, "service": service, "image": image,
 }, sort_keys=True) + "\n")
 PY
-echo "Published, scanned and signed $ref"
+echo "PASS: published scanned and signed $ref"
