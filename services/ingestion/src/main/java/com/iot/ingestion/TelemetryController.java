@@ -22,7 +22,7 @@ public class TelemetryController {
     private final KafkaTemplate<String, String> kafka;
     private final JsonMapper mapper;
 
-    public TelemetryController(KafkaTemplate<String, String> kafka, ObjectMapper mapper) {
+    public TelemetryController(KafkaTemplate<String, String> kafka, JsonMapper mapper) {
         this.kafka = kafka;
         this.mapper = mapper;
     }
