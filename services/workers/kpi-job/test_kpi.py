@@ -71,11 +71,12 @@ class TestComputeKpis:
         
         assert kpis["rate_of_change"] == 15  # 35 - 20
 
-    def test_power_energy(self):
+    def test_power_samples_are_not_mislabeled_as_energy(self):
         values = [100, 150, 200]
         kpis = compute_kpis(values, "power")
         
-        assert kpis["sum"] == 450\n        assert "energy" not in kpis
+        assert kpis["sum"] == 450
+        assert "energy" not in kpis
 
 def test_empty_window_advances_watermark_atomically(monkeypatch):
     from datetime import datetime, timezone
