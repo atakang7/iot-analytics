@@ -1,22 +1,16 @@
-# Architecture and delivery semantics
+# Architecture
 
-## Control and data planes
+The registry manages device metadata; ingestion sends JSON telemetry to Kafka while workers persist readings, alerts and KPIs.
 
-The registry is a CRUD API over PostgreSQL/TimescaleDB. Ingestion publishes
-a validated JSON envelope to `iot.telemetry` keyed by `deviceId`; a 202
-response is returned only after a Kafka broker acknowledges the send.
+```text
++---------------+ Kafka +------------+ Kafka +--------------+ writes +-------------+
+| stream-worker | ----> | iot.alerts | ----> | alert-worker | ------> | timescaledb |
++---------------+       +------------+       +--------------+         +-------------+
+```
 
-Two distinct consumer groups read telemetry:
+## Event
 
-- `telemetry-worker`: batches into the TimescaleDB telemetry hypertable.
-- `stream-worker`: evaluates sensor thresholds, rate changes and stuck readings;
-  publishes alerts to `iot.alerts`, where `alert-worker` persists them.
-
-`kpi-job` separately reads one closed five-minute window from the database,
-calculates per-device/**per-sensor** KPIs, and advances a persisted watermark
-within the same transaction.
-
-## Event envelope
+`POST /telemetry` on port `8081` accepts:
 
 ```json
 {
@@ -30,52 +24,23 @@ within the same transaction.
 }
 ```
 
-Vibration readings use `{"x": 0.2, "y": 0.1, "z": 0.0}`; scalar sensors
-use `{"value": number}`. The producer requires basic fields, but it does
-not yet enforce all sensor-specific numeric schemas. The worker rejects
-invalid/non-finite values.
+Vibration uses `{"x": 0.2, "y": 0.1, "z": 0.0}`; timestamps need a UTC offset, and workers reject non-finite numeric values.
 
-## Failure and replay model
+## Delivery
 
-**At least once, not exactly once.** Kafka source offsets are committed only
-after successful SQL writes or downstream Kafka acknowledgments. A crash
-between the side effect and commit can cause replay.
+- Ingestion returns HTTP `202` after Kafka acknowledges the publish.
+- Consumer offsets commit after the SQL write or downstream publish, so delivery is at least once.
+- Telemetry deduplicates on `(device_id, sensor_id, time)`.
+- Alerts use stable UUID5 IDs and database upserts.
+- KPIs deduplicate on `(device_id, sensor_id, kpi_name, window_start)`; the watermark and KPI rows commit together.
+- Invalid events block their consumer until corrected; there is no dead-letter topic.
 
-- Telemetry identity: `(device_id, sensor_id, time)`; duplicate inserts are ignored.
-- Alert identity: deterministic UUID5 based on source identity/time, alert type
-  and severity; the alert table upserts by ID.
-- KPI identity: `(device_id, sensor_id, kpi_name, window_start)`; the checkpoint
-  and derived KPI rows commit atomically.
-- A poison event currently fails the consumer before acknowledgement. There is
-  **no dead-letter topic or quarantine workflow yet**; an operator must inspect
-  and resolve/replay the event.
-- The stream worker keeps rate-change/stuck state in memory; restarting it
-  resets that state. Kafka replay can re-generate alerts, but the persistence
-  key deduplicates matching alerts.
-- Threshold values are loaded on stream worker startup; an update currently
-  requires a restart to take effect.
+## Windows and state
 
-## Time, retention and analytics
+- `kpi-job` processes one closed five-minute window per invocation, using `[start, end)`.
+- Retention is 30 days and compression starts after seven days in a newly initialized TimescaleDB.
+- Power `sum` adds samples; it does not calculate energy.
+- Stream-worker rate and stuck-sensor state resets on restart; threshold changes require a restart.
+- Device-registry UUIDs are not validated against telemetry `deviceId` values.
 
-Ingestion requires timestamps with offsets. KPI windows are half-open
-`[start, end)`; a scheduled run processes the earliest closed window not
-yet checkpointed. This intentionally favors bounded work and recoverability
-over catching up many windows in one execution.
-
-The telemetry hypertable compresses after seven days and retains thirty days
-under the initialization schema. Set retention to your needs before using
-real data. For power, the system reports **sample sum**, not physical energy.
-A defensible energy calculation would require power units and time integration.
-
-## Deployment boundaries
-
-`services/docker-compose.yml` is the tested local topology, with internal
-broker networking and host-bound API/database ports. `iot-helm/` includes
-OpenShift ImageStreams, BuildConfigs and Routes.
-These are **not portable Kubernetes primitives** and are not exercised
-against an OpenShift cluster by GitHub Actions.
-
-No automated OpenShift deployment controller is included. Deployments require
-deliberate operator action, after verifying images and cluster prerequisites.
-A future release pipeline should promote immutable image digests and support
-rollback; local CI success is not deployment evidence.
+The Compose stack is local; [OpenShift](OPENSHIFT.md) is an optional deployment target with no automatic rollout.
