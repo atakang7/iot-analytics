@@ -113,6 +113,7 @@ jobs:
       - name: Validate chart and both deployment modes
         run: |
           bash -n delivery/bin/publish-image
+          python3 -m pip install --quiet PyYAML==6.0.2
           python3 -m unittest discover -s delivery -p 'test_*.py' -v
           python3 delivery/release.py validate delivery/fixtures/release.test.json
           python3 delivery/release.py helm-values delivery/fixtures/release.test.json --output /tmp/iot-release-values.json
@@ -120,7 +121,6 @@ jobs:
           helm lint iot-helm -f iot-helm/values-dev.yaml
           helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml > /tmp/iot-rendered.yaml
           test -s /tmp/iot-rendered.yaml
-          python3 -m pip install --quiet PyYAML==6.0.2
           python3 scripts/verify-helm.py /tmp/iot-rendered.yaml \
             --export-prometheus-config /tmp/iot-prometheus.yml
           docker run --rm --entrypoint /bin/promtool \
@@ -137,6 +137,11 @@ jobs:
             --set apps.imageMode=kind --set infra.enabled=false \
             --set monitoring.enabled=false > /tmp/iot-kind.yaml
           python3 scripts/verify-kind.py /tmp/iot-kind.yaml
+          python3 -c 'import json;from pathlib import Path;p=Path("/tmp/iot-release-values.json");Path("/tmp/iot-leaf-values.json").write_text(json.dumps(json.loads(p.read_text())["apps"]))'
+          helm template iot-apps-dev iot-helm/charts/apps \
+            -f /tmp/iot-leaf-values.json > /tmp/iot-leaf-rendered.yaml
+          python3 -c 'import sys;sys.path.insert(0,"delivery");from rollout import verify_rendered;from release import load_release;from pathlib import Path;verify_rendered(Path("/tmp/iot-leaf-rendered.yaml").read_text(),load_release("delivery/fixtures/release.test.json"))'
+
           python3 scripts/verify-observability.py
           docker run --rm --entrypoint /bin/promtool \
             -v "$PWD/platform/observability/config:/etc/prometheus:ro" \
