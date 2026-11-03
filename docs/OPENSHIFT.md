@@ -19,3 +19,18 @@ For a *real* OpenShift environment, verify separately:
 5. The Kafka → TimescaleDB → alert pipeline with a real telemetry event.
 
 Do not use the legacy `ci-cd` controller as a production release gate.
+
+## Visibility and metrics
+
+The chart keeps user-facing APIs and Grafana private by default.
+Enable their Routes only after adding ingress authentication and access policy.
+Prometheus has no public Route; access it through port-forward:
+
+```bash
+oc -n "$NAMESPACE" port-forward svc/prometheus 9090:9090
+```
+
+Prometheus scrapes the ingestion and registry management endpoints on port
+9090, plus each Python worker's metrics Service on port 8000. A GitHub-hosted
+Helm validation job checks these rendered targets and that no public Route
+appears by default; this does not replace a live OpenShift smoke test.

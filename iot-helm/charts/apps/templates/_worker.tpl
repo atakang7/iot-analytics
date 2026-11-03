@@ -25,6 +25,9 @@ spec:
         - name: {{ $name }}
           image: image-registry.openshift-image-registry.svc:5000/atakangul-dev/{{ $name }}:latest
           imagePullPolicy: Always
+          ports:
+            - name: metrics
+              containerPort: 8000
           env:
             - name: SERVICE_NAME
               value: {{ $name }}
@@ -56,6 +59,38 @@ spec:
             limits:
               cpu: 300m
               memory: 256Mi
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+spec:
+  selector:
+    app: {{ $name }}
+  ports:
+    - name: metrics
+      port: 8000
+      targetPort: metrics
 ---
 apiVersion: image.openshift.io/v1
 kind: ImageStream
