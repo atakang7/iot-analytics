@@ -35,6 +35,17 @@ registry_status=$(curl -sS -o /tmp/iot-device-response -w '%{http_code}' \
   "$REGISTRY/devices")
 test "$registry_status" = 201 || { cat /tmp/iot-device-response; exit 1; }
 
+# The HTTP boundary must reject an event that consumers cannot process.
+invalid_code=$(curl -sS -o /tmp/iot-invalid-response -w '%{http_code}' \
+  -H 'Content-Type: application/json' \
+  -d '{"deviceId":"reject-me","deviceType":"motor","sensorId":"temp-1","sensorType":"temperature","timestamp":"2026-11-03T10:00:00Z","unit":"celsius","value":{"value":"NaN"}}' \
+  "$API/telemetry")
+test "$invalid_code" = 400 || {
+  cat /tmp/iot-invalid-response
+  echo "Expected sensor validation to return HTTP 400, got $invalid_code"
+  exit 1
+}
+
 # A reading inside the first closed KPI window makes the test independent
 # of the wall clock's position within its current 5-minute bucket.
 stamp=$("${COMPOSE[@]}" exec -T timescaledb psql -U iot -d iot -Atc \
