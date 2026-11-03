@@ -1,11 +1,13 @@
 FROM maven:3.9.6-eclipse-temurin-17-alpine AS build
-WORKDIR /app
+WORKDIR /src
 COPY pom.xml .
 COPY src ./src
-RUN mvn clean package -DskipTests
+RUN mvn -B -ntp verify
 
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
-COPY --from=build /app/target/device-registry-1.0.0.jar app.jar
+RUN addgroup -S app && adduser -S -G app -u 10001 app
+COPY --from=build /src/target/device-registry-1.0.0.jar /app/app.jar
+USER app
 EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
