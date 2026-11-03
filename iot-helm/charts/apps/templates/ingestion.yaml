@@ -41,6 +41,10 @@ spec:
     metadata:
       labels:
         app: ingestion
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/actuator/prometheus"
     spec:
       containers:
         - name: ingestion
@@ -49,6 +53,8 @@ spec:
           ports:
             - containerPort: 8081
               name: http
+            - containerPort: 9090
+              name: management
           env:
             - name: KAFKA_BOOTSTRAP
               value: kafka:9092
@@ -63,14 +69,14 @@ spec:
               memory: 1Gi
           livenessProbe:
             httpGet:
-              path: /telemetry/health
-              port: 8081
+              path: /actuator/health/liveness
+              port: 9090
             initialDelaySeconds: 60
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /telemetry/health
-              port: 8081
+              path: /actuator/health/readiness
+              port: 9090
             initialDelaySeconds: 30
             periodSeconds: 5
 ---

@@ -1,7 +1,7 @@
 package com.iot.ingestion;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -20,9 +20,9 @@ public class TelemetryController {
 
     private static final String TOPIC = "iot.telemetry";
     private final KafkaTemplate<String, String> kafka;
-    private final ObjectMapper mapper;
+    private final JsonMapper mapper;
 
-    public TelemetryController(KafkaTemplate<String, String> kafka, ObjectMapper mapper) {
+    public TelemetryController(KafkaTemplate<String, String> kafka, JsonMapper mapper) {
         this.kafka = kafka;
         this.mapper = mapper;
     }
@@ -33,7 +33,7 @@ public class TelemetryController {
         final String json;
         try {
             json = mapper.writeValueAsString(telemetry);
-        } catch (JsonProcessingException exception) {
+        } catch (JacksonException exception) {
             return CompletableFuture.completedFuture(
                     ResponseEntity.badRequest().body(Map.of("status", "invalid_payload")));
         }

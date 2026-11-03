@@ -14,3 +14,16 @@ spring:
       properties:
         enable.idempotence: true
         max.in.flight.requests.per.connection: 5
+
+management:
+  server:
+    port: 9090
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

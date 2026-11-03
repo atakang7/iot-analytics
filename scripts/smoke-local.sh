@@ -18,6 +18,17 @@ done
 curl -fsS "$API/telemetry/health" >/dev/null
 curl -fsS "$REGISTRY/devices" >/dev/null
 
+# Management listeners are separate from user-facing API routes.
+metrics_file="$(mktemp)"
+trap 'rm -f "$metrics_file"' EXIT
+for port in 9090 9091; do
+  curl -fsS "http://127.0.0.1:$port/actuator/health/readiness" -o "$metrics_file"
+  grep -q '"status":"UP"' "$metrics_file"
+  curl -fsS "http://127.0.0.1:$port/actuator/prometheus" -o "$metrics_file"
+  # Avoid SIGPIPE from piping a long Prometheus exposition into grep -q.
+  grep -q '^jvm_memory_used_bytes' "$metrics_file"
+done
+
 uuid="ci-e2e-$(date +%s)-$$"
 registry_status=$(curl -sS -o /tmp/iot-device-response -w '%{http_code}' \
   -H 'Content-Type: application/json' -d '{"name":"Smoke Test","type":"motor"}' \

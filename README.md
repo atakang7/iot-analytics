@@ -1,6 +1,6 @@
 # IoT Analytics
 
-An end-to-end telemetry laboratory: a Spring Boot device registry and ingestion API,
+An end-to-end telemetry laboratory: a Spring Boot 4 / Java 21 device registry and ingestion API,
 Kafka streaming consumers, TimescaleDB storage and five-minute analytics. The
 repository deliberately separates **application correctness**, **local operation**,
 and an **optional OpenShift deployment experiment**.
@@ -71,7 +71,8 @@ Use [RUNBOOK.md](RUNBOOK.md) for diagnostics, clean shutdown and safe upgrades.
 - `POST /devices` on `127.0.0.1:8080`: JSON device metadata; returns 201 + `Location`.
 - `GET /devices`, `GET /devices/{id}`, `PUT /devices/{id}`, `DELETE /devices/{id}`.
 - `POST /telemetry` on `127.0.0.1:8081`: returns **202 only after Kafka acknowledges the publish**; 400 for invalid input, 503 for publish failure.
-- `GET /telemetry/health`: process health endpoint; not a deep dependency check.
+- `GET /telemetry/health`: ingestion process-only health endpoint.
+- Management health + Prometheus metrics: `127.0.0.1:9090/actuator/...` for ingestion, `127.0.0.1:9091/actuator/...` for registry. Separate management ports are not exposed by the OpenShift Route.
 
 Example:
 
