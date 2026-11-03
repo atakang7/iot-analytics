@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: persistent-proof
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: storage-writer
+spec:
+  nodeSelector:
+    kubernetes.io/hostname: iot-foundation-worker
+  containers:
+    - name: writer
+      image: busybox:1.36
+      command: ["sh", "-c", "echo durable-cluster-proof > /data/marker && sleep 900"]
+      volumeMounts:
+        - name: proof
+          mountPath: /data
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi
+  volumes:
+    - name: proof
+      persistentVolumeClaim:
+        claimName: persistent-proof

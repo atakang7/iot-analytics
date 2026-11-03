@@ -17,3 +17,8 @@ require fixing the owning layer and rerunning the proof.
 The [observability validator](observability/) also proves real Prometheus
 scrapes, alert loading, Grafana provisioning, and Kubernetes Pod logs
 reaching Loki. No validator changes infrastructure state to force success.
+
+The independent [three-node cluster validation](cluster/README.md) verifies
+Ready nodes, DNS/CNI traffic between workers, dynamic persistent volumes and
+Kubernetes API admission allow/deny decisions, then cleans up only its own
+temporary resources.

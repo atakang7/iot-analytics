@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Delete only the named disposable foundation cluster.
+set -Eeuo pipefail
+CLUSTER="iot-foundation"
+if kind get clusters | grep -Fxq "$CLUSTER"; then
+  kind delete cluster --name "$CLUSTER"
+else
+  echo "Named cluster is absent; nothing deleted"
+fi
