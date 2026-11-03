@@ -37,9 +37,11 @@ deploy_component() {
     return 1
   fi
   
-  # Python: copy common
-  if [[ "$type" == "python" ]] && [[ -d "$PYTHON_PATH/common" ]]; then
-    cp -r "$PYTHON_PATH/common" "$path/common"
+  # Workers share common/: build from their common parent directory.
+  # Never copy/delete paths in the checked-out repository.
+  local build_context="$path"
+  if [[ "$type" == "python" ]]; then
+    build_context="$PYTHON_PATH"
   fi
   
   # Check BuildConfig
@@ -48,7 +50,6 @@ deploy_component() {
   if [[ $? -ne 0 ]]; then
     log_error "No BuildConfig" "\"error\":\"$(json_escape "$bc_out")\""
     update_github_status "$sha" "failure" "deploy/$component" "BuildConfig not found"
-    [[ -d "$path/common" ]] && rm -rf "$path/common"
     echo "failure:no_bc" > "$job_file"
     return 1
   fi
@@ -58,7 +59,7 @@ deploy_component() {
   update_github_status "$sha" "pending" "deploy/$component" "Building image..."
   local build_start=$(date +%s)
   local build_out
-  build_out=$(oc start-build "$component" -n "$HELM_NAMESPACE" --from-dir="$path" --follow --wait 2>&1)
+  build_out=$(oc start-build "$component" -n "$HELM_NAMESPACE" --from-dir="$build_context" --follow --wait 2>&1)
   local build_status=$?
   local build_duration=$(($(date +%s) - build_start))
   
@@ -90,22 +91,19 @@ deploy_component() {
   # Force pod refresh (using :latest tag)
   kubectl rollout restart deployment/"$component" -n "$HELM_NAMESPACE" 2>/dev/null || true
   
-  # Smoke test - trust Helm --wait (uses readiness probe)
-  # Just verify service DNS resolves and pod accepts connections
-  update_github_status "$sha" "pending" "deploy/$component" "Verifying..."
-  local ok=0
-  for i in {1..5}; do
-    # Just check if service is reachable, any response is fine
-    curl -sf --max-time 5 "http://$component:8080/" >/dev/null 2>&1 || \
-    curl -sf --max-time 5 "http://$component:8081/" >/dev/null 2>&1 && { ok=1; break; }
-    sleep 3
-  done
-
-  # If service isn't responding but Helm succeeded, still consider it OK
-  # Helm --wait already verified the readiness probe
-  if [[ $ok -eq 0 ]]; then
-    log_warn "Service not responding but Helm succeeded, continuing..."
-    ok=1
+  # The controller is a legacy OpenShift demonstration. Do not hide a failed
+  # rollout by accepting any HTTP response or assuming --wait is sufficient.
+  update_github_status "$sha" "pending" "deploy/$component" "Verifying rollout..."
+  if [[ "$component" == "kpi-job" ]]; then
+    if ! oc get cronjob/kpi-job -n "$HELM_NAMESPACE" >/dev/null 2>&1; then
+      echo "failure:kpi-cronjob" > "$job_file"
+      update_github_status "$sha" "failure" "deploy/$component" "CronJob missing"
+      return 1
+    fi
+  elif ! oc rollout status "deployment/$component" -n "$HELM_NAMESPACE" --timeout=120s; then
+    echo "failure:rollout" > "$job_file"
+    update_github_status "$sha" "failure" "deploy/$component" "Deployment did not become ready"
+    return 1
   fi
   
   local total_duration=$(($(date +%s) - build_start))
