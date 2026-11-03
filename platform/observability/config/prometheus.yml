@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+  - job_name: ingestion
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['ingestion.iot-validation.svc.cluster.local:9090']
+  - job_name: device-registry
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['device-registry.iot-validation.svc.cluster.local:9090']
+  - job_name: telemetry-worker
+    static_configs:
+      - targets: ['telemetry-worker.iot-validation.svc.cluster.local:8000']
+  - job_name: stream-worker
+    static_configs:
+      - targets: ['stream-worker.iot-validation.svc.cluster.local:8000']
+  - job_name: alert-worker
+    static_configs:
+      - targets: ['alert-worker.iot-validation.svc.cluster.local:8000']

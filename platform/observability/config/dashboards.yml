@@ -1,0 +1,9 @@
+apiVersion: 1
+providers:
+  - name: IoT Analytics
+    orgId: 1
+    type: file
+    folder: IoT
+    disableDeletion: true
+    options:
+      path: /etc/grafana/dashboards

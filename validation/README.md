@@ -13,3 +13,7 @@ This repo now makes that distinction executable:
 The kind test has no cluster ingress or production credentials. The validator
 only exercises the state it was given and **does not repair it**; failures
 require fixing the owning layer and rerunning the proof.
+
+The [observability validator](observability/) also proves real Prometheus
+scrapes, alert loading, Grafana provisioning, and Kubernetes Pod logs
+reaching Loki. No validator changes infrastructure state to force success.
