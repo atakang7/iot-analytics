@@ -1,34 +1,24 @@
 # Immutable delivery
 
-The golden repo's release invariant now has an explicit implementation:
+[`publish.yaml`](../.github/workflows/publish.yaml) manually builds six images from a verified `main` commit and produces a digest-pinned release artifact.
 
 ```text
-green main CI
-    │ manual workflow dispatch
-    ▼
-six independent OCI builds (one per service)
-    ▼
-Trivy CRITICAL gate + CycloneDX SBOM on each local OCI layout
-    ▼
-skopeo --preserve-digests → GHCR (byte-identity checked)
-    ▼
-Cosign keyless sign + verify (GitHub OIDC main workflow)
-    ▼
-six image identities → assemble.py → release.json
-    ▼
-release.py → release-values.json → reviewed OpenShift deployment
++--------------+ OCI +-------+ OCI +--------+ image +------+ digest +--------+
+| publish.yaml | ---> | Trivy | ---> | skopeo | -----> | GHCR | ------> | Cosign |
++--------------+      +-------+      +--------+        +------+         +--------+
+                                                                      |
+                                                                      | identities
+                                                                      v
+                                                               +-------------+ JSON +--------------+
+                                                               | assemble.py | ---> | release.json |
+                                                               +-------------+      +--------------+
 ```
 
-The `.github/workflows/publish.yaml` workflow **only runs on explicit
-dispatch**, and rejects any branch except `main` or a commit without a
-successful main-branch Verify run. It never connects to a Kubernetes cluster.
-Each matrix job must pass the vulnerability gate, registry digest check and
-cryptographic signature verification; the final job refuses an incomplete or
-mixed-revision release.
+Trivy rejects critical findings; skopeo preserves image digests, and Cosign signs and verifies them.
 
-Download the `immutable-release` Actions artifact containing `release.json`
-and `release-values.json`. SBOMs are stored as separate per-image workflow
-artifacts. Release image identifiers are pinned OCI digests, not tags.
+## Verify a release
+
+Download `release.json` and `release-values.json` from the manually triggered `immutable-release` Actions artifact.
 
 ```bash
 python3 delivery/release.py validate release.json
@@ -36,35 +26,9 @@ helm template iot-analytics iot-helm -f release-values.json > /tmp/release.yaml
 python3 scripts/verify-helm.py /tmp/release.yaml --release-manifest release.json
 ```
 
-Prerequisites for publication are GitHub Actions package write permission,
-container-registry access, Sigstore OIDC and the security feed. Publication
-*fails* if a gate or registry/identity check cannot complete. The CI checks
-the scripts and release-contract code, but **publishing has not been run
-against GHCR** and **live OpenShift deployment is not verified**.
+## Limits
 
-Do not manually substitute synthetic test fixture digests. Never store secrets
-in a release manifest. Environment state/promotion is implemented by [state.py](state.py) and
-[state/](../state/). Live cluster verification remains operator-owned.
-
-## Supply-chain trust boundary
-
-Every Action is now pinned to a verified full Git SHA, including the patched
-post-March-2026 Trivy installer. Pull requests run a secret scan and
-`security/verify_actions.py` forbids reintroducing mutable Action tags.
-The publisher passes the **OCI archive itself** to Trivy before copying that
-exact artifact into GHCR; a raw extracted directory is not a container scan.
-
-The publication workflow is still manual, separate from CI. It has not
-published a registry artifact in this repository yet.
-
-## Same-byte release proof in CI
-
-The `oci-release-proof` runner executes [the same OCI library](lib/oci.sh)
-used by the manual publisher. A local registry accepts one real worker image,
-but only after its OCI archive has passed the Trivy CRITICAL gate and CycloneDX
-SBOM verification. Skopeo publishes it preserving exact digest identity;
-Cosign signs and verifies it, and a wrong public key **must** be rejected.
-
-No GHCR token, OIDC identity or package-write grant is available to this test.
-Therefore real keyless GHCR publication and OpenShift rollout remain separately
-operator-triggered actions, not implied by CI success.
+- CI proves local registry transport and signing with test credentials, not a GHCR publication.
+- Live GHCR publishing, OpenShift rollout and rollback are separate operator actions.
+- `delivery/fixtures/release.test.json` contains test identities, not deployable images.
+- Environment promotion uses [`state.py`](state.py) and versioned [state files](../state/).
