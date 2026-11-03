@@ -1,36 +1,28 @@
-# CI and deployment boundary
+Part of [iot-analytics](../../README.md).
 
-The active workflow is [ci.yaml](ci.yaml).
+# workflows
 
-```text
-Pull request / main push
-       │
-       ├── Java unit tests + builds
-       ├── Python unit tests + syntax checks
-       ├── Build all six OCI images + validate Compose
-       ├── Helm lint and template
-       ├── Fresh TimescaleDB schema + dedup replay tests
-       └── Real HTTP → Kafka → telemetry → alerts → KPI smoke
-                    │
-                    ▼
-                green / red
+GitHub Actions checks the stack and publishes signed image digests on manual dispatch.
+
+## Run
+
+`ci.yaml` runs on pull requests and pushes to `main`. `publish.yaml` requires manual dispatch on a verified `main` commit.
+
+## Test
+
+```bash
+python3 security/verify_actions.py
+python3 -m unittest discover -s security -p 'test_*.py' -v
 ```
 
-The workflow verifies the **local** stack. It never publishes images, sets a
-`deploy/cd` status, runs OpenShift deployments or promotes across environments.
+## Config
 
-The obsolete, highly privileged OpenShift polling controller has been
-removed entirely. There is no cluster deployment or implicit promotion from CI.
+| Runtime | Pinned version | Job |
+| --- | --- | --- |
+| Java | 21 | Maven services |
+| Python | 3.11 | Worker tests |
+| Helm | 3.16.4 | Chart rendering |
 
-For failures, inspect the named job, logs and any failing test. Never treat
-a skipped job or manually emitted status as application proof.
+## Interfaces
 
-The Kubernetes runner also deploys an isolated monitoring stack
-(Prometheus, Alertmanager, Loki, Grafana, namespace-scoped log forwarder)
-and validates five live scrapes, two alert rules, data sources and actual
-worker log delivery to Loki.
-
-A separate foundation runner creates a disposable three-node Kind cluster
-(1 control plane + 2 workers) and proves DNS, cross-node Service traffic,
-PVC data persistence across Pod replacement, and native admission decisions.
-This check is independent of application integration tests.
+[ci.yaml](ci.yaml) runs the [verification jobs](../../docs/reference/verification.md). [publish.yaml](publish.yaml) creates a six-image release artifact. Neither workflow deploys into a live OpenShift cluster.
