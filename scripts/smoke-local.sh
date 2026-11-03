@@ -18,6 +18,12 @@ done
 curl -fsS "$API/telemetry/health" >/dev/null
 curl -fsS "$REGISTRY/devices" >/dev/null
 
+# Management listeners are separate from user-facing API routes.
+for port in 9090 9091; do
+  curl -fsS "http://127.0.0.1:$port/actuator/health/readiness" | grep -q '"status":"UP"'
+  curl -fsS "http://127.0.0.1:$port/actuator/prometheus" | grep -q '^jvm_memory_used_bytes'
+done
+
 uuid="ci-e2e-$(date +%s)-$$"
 registry_status=$(curl -sS -o /tmp/iot-device-response -w '%{http_code}' \
   -H 'Content-Type: application/json' -d '{"name":"Smoke Test","type":"motor"}' \
