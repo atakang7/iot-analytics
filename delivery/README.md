@@ -56,3 +56,15 @@ exact artifact into GHCR; a raw extracted directory is not a container scan.
 
 The publication workflow is still manual, separate from CI. It has not
 published a registry artifact in this repository yet.
+
+## Same-byte release proof in CI
+
+The `oci-release-proof` runner executes [the same OCI library](lib/oci.sh)
+used by the manual publisher. A local registry accepts one real worker image,
+but only after its OCI archive has passed the Trivy CRITICAL gate and CycloneDX
+SBOM verification. Skopeo publishes it preserving exact digest identity;
+Cosign signs and verifies it, and a wrong public key **must** be rejected.
+
+No GHCR token, OIDC identity or package-write grant is available to this test.
+Therefore real keyless GHCR publication and OpenShift rollout remain separately
+operator-triggered actions, not implied by CI success.
