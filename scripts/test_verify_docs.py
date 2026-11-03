@@ -38,15 +38,15 @@ class DocumentationChecks(unittest.TestCase):
             root = Path(tmp)
             child = root / "services" / "ingestion" / "README.md"
             child.parent.mkdir(parents=True)
-            good = "Part of [iot-analytics](../../README.md).\\n"
+            good = "Part of [iot-analytics](../../README.md).\n"
             self.assertEqual(check_readme(root, child, good), [])
-            self.assertTrue(check_readme(root, child, "# ingestion\\n"))
-            self.assertTrue(check_readme(root, child, good + "line\\n" * 61))
+            self.assertTrue(check_readme(root, child, "# ingestion\n"))
+            self.assertTrue(check_readme(root, child, good + "line\n" * 61))
 
     def test_root_readme_limit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            self.assertTrue(check_readme(root, root / "README.md", "line\\n" * 81))
+            self.assertTrue(check_readme(root, root / "README.md", "line\n" * 81))
 
     def test_ai_stock_phrases_are_rejected(self):
         self.assertTrue(check_style(Path("x.md"), "A pivotal development"))
