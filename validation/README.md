@@ -1,24 +1,29 @@
-# Validation is evidence, not deployment
+Part of [iot-analytics](../README.md).
 
-The golden reference distinguishes validation from configuration ownership.
-This repo now makes that distinction executable:
+# validation
 
-- `services/`: Java/Python unit tests and local full-stack Compose E2E
-- `iot-helm/`: OpenShift lab manifest checks and digest-pinned release mode
-- `infra/kind/`: isolated Kubernetes foundation, ephemeral Kafka/TimescaleDB
-- `validation/kind/e2e.sh`: running Pod, Service, health/metrics and full
-  telemetry -> Kafka -> TimescaleDB/alert -> KPI integration proof
-- `delivery/`: immutable OCI provenance and environment promotion rules
+Checks against disposable Kubernetes deployments and running application components.
 
-The kind test has no cluster ingress or production credentials. The validator
-only exercises the state it was given and **does not repair it**; failures
-require fixing the owning layer and rerunning the proof.
+## Run
 
-The [observability validator](observability/) also proves real Prometheus
-scrapes, alert loading, Grafana provisioning, and Kubernetes Pod logs
-reaching Loki. No validator changes infrastructure state to force success.
+```bash
+make kind-up
+make kind-smoke
+make kind-down
+```
 
-The independent [three-node cluster validation](cluster/README.md) verifies
-Ready nodes, DNS/CNI traffic between workers, dynamic persistent volumes and
-Kubernetes API admission allow/deny decisions, then cleans up only its own
-temporary resources.
+## Test
+
+```bash
+bash -n validation/kind/e2e.sh validation/cluster/validate.sh validation/observability/smoke.sh
+```
+
+## Interfaces
+
+| Component | Check |
+| --- | --- |
+| [kind](kind/README.md) | HTTP, Kafka, SQL, KPI pipeline |
+| [cluster](cluster/README.md) | Nodes, networking, volumes and admission |
+| [observability](observability/README.md) | Prometheus, Grafana, alerts and logs |
+
+See [test procedures](../docs/how-to/test-kubernetes.md).
