@@ -1,7 +1,5 @@
-#!/bin/bash
-
-echo "=== Stopping Kafka infrastructure ==="
-
-docker-compose -f docker-compose.kafka.yml down -v
-
-echo "=== Stopped ==="
+#!/usr/bin/env bash
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Preserve the named TimescaleDB volume: no destructive -v.
+docker compose -f "$ROOT/services/docker-compose.yml" stop kafka

@@ -140,7 +140,7 @@ spec:
       containers:
         - name: simulator
           image: python:3.11-slim
-          command: ["sh", "-c", "pip install --user -q requests && python /scripts/simulator.py"]
+          command: ["python", "/scripts/simulator.py"]
           env:
             - name: HOME
               value: /tmp
