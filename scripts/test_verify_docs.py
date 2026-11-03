@@ -6,6 +6,7 @@ import runpy
 _checks = runpy.run_path(str(Path(__file__).with_name('verify-docs.py')))
 check_links = _checks['check_links']
 check_style = _checks['check_style']
+check_readme = _checks['check_readme']
 
 
 class DocumentationChecks(unittest.TestCase):
@@ -31,6 +32,21 @@ class DocumentationChecks(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.assertEqual(check_links(root, root / "start.md", "[a](https://example.org)"), [])
+
+    def test_component_readme_requires_root_link(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            child = root / "services" / "ingestion" / "README.md"
+            child.parent.mkdir(parents=True)
+            good = "Part of [iot-analytics](../../README.md).\\n"
+            self.assertEqual(check_readme(root, child, good), [])
+            self.assertTrue(check_readme(root, child, "# ingestion\\n"))
+            self.assertTrue(check_readme(root, child, good + "line\\n" * 61))
+
+    def test_root_readme_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertTrue(check_readme(root, root / "README.md", "line\\n" * 81))
 
     def test_ai_stock_phrases_are_rejected(self):
         self.assertTrue(check_style(Path("x.md"), "A pivotal development"))
