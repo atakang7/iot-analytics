@@ -19,7 +19,7 @@ Compose reads `services/.env` for interpolation. The worker process also reads i
 | `SERVICE_NAME` | `unknown` | Python structured log service name |
 | `PUSHGATEWAY_URL` | `http://localhost:9091` | KPI job's optional metrics push |
 
-The ingestion application's Kafka topic is currently hardcoded to `iot.telemetry`. Changing only the Python topic environment variable will break the pipeline; coordinate any topic change across both implementations.
+Compose passes `KAFKA_TELEMETRY_TOPIC` to both the Java ingestion producer and Python telemetry and stream consumers. `KAFKA_ALERTS_TOPIC` is shared by the stream and alert workers. Configure both through `services/.env` before starting the stack.
 
 ## Local ports
 
