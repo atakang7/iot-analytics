@@ -20,7 +20,7 @@ class KafkaConsumer:
             value_deserializer=lambda payload: json.loads(payload.decode("utf-8")),
             auto_offset_reset="earliest",
             enable_auto_commit=False,
-            consumer_timeout_ms=0,
+            # Default consumer timeout is infinite: idle streams must not exit.
         )
 
     def __iter__(self):

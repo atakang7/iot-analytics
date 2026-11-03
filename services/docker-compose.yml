@@ -1,29 +1,52 @@
+# Local-only development topology. Production requires external credentials,
+# controlled Kafka access and a managed migration/deployment process.
+x-worker-environment: &worker-environment
+  DB_HOST: timescaledb
+  DB_NAME: iot
+  DB_USER: iot
+  DB_PASSWORD: ${IOT_DB_PASSWORD:?Create services/.env with a unique password}
+  KAFKA_BOOTSTRAP: kafka:9092
+  METRICS_PORT: "8000"
+
 services:
   timescaledb:
     image: timescale/timescaledb:latest-pg15
     environment:
       POSTGRES_DB: iot
       POSTGRES_USER: iot
-      POSTGRES_PASSWORD: ${IOT_DB_PASSWORD:?Set IOT_DB_PASSWORD in services/.env}
+      POSTGRES_PASSWORD: ${IOT_DB_PASSWORD:?Create services/.env with a unique password}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
-      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
       - timescale_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iot -d iot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
 
   kafka:
     image: apache/kafka:3.7.0
     environment:
-      KAFKA_NODE_ID: 1
+      KAFKA_NODE_ID: "1"
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    ports:
-      - "127.0.0.1:9092:9092"
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
 
   device-registry:
     build: ./device-registry
@@ -31,11 +54,13 @@ services:
       DB_HOST: timescaledb
       DB_NAME: iot
       DB_USER: iot
-      DB_PASSWORD: ${IOT_DB_PASSWORD:?Set IOT_DB_PASSWORD in services/.env}
+      DB_PASSWORD: ${IOT_DB_PASSWORD:?Create services/.env with a unique password}
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
-      - timescaledb
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
 
   ingestion:
     build: ./ingestion
@@ -44,63 +69,63 @@ services:
     ports:
       - "127.0.0.1:8081:8081"
     depends_on:
-      - kafka
-
-  alert-worker:
-    build:
-      context: ./workers
-      dockerfile: alert-worker/Dockerfile
-    environment:
-      DB_HOST: timescaledb
-      DB_NAME: iot
-      DB_USER: iot
-      DB_PASSWORD: ${IOT_DB_PASSWORD:?Set IOT_DB_PASSWORD in services/.env}
-      KAFKA_BOOTSTRAP: kafka:9092
-    depends_on:
-      - timescaledb
-      - kafka
-
-  kpi-job:
-    build:
-      context: ./workers
-      dockerfile: kpi-job/Dockerfile
-    environment:
-      DB_HOST: timescaledb
-      DB_NAME: iot
-      DB_USER: iot
-      DB_PASSWORD: ${IOT_DB_PASSWORD:?Set IOT_DB_PASSWORD in services/.env}
-      KAFKA_BOOTSTRAP: kafka:9092
-    depends_on:
-      - timescaledb
-      - kafka
-
-  stream-worker:
-    build:
-      context: ./workers
-      dockerfile: stream-worker/Dockerfile
-    environment:
-      DB_HOST: timescaledb
-      DB_NAME: iot
-      DB_USER: iot
-      DB_PASSWORD: ${IOT_DB_PASSWORD:?Set IOT_DB_PASSWORD in services/.env}
-      KAFKA_BOOTSTRAP: kafka:9092
-    depends_on:
-      - timescaledb
-      - kafka
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
 
   telemetry-worker:
     build:
       context: ./workers
       dockerfile: telemetry-worker/Dockerfile
     environment:
-      DB_HOST: timescaledb
-      DB_NAME: iot
-      DB_USER: iot
-      DB_PASSWORD: ${IOT_DB_PASSWORD:?Set IOT_DB_PASSWORD in services/.env}
-      KAFKA_BOOTSTRAP: kafka:9092
+      <<: *worker-environment
+      SERVICE_NAME: telemetry-worker
     depends_on:
-      - timescaledb
-      - kafka
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  stream-worker:
+    build:
+      context: ./workers
+      dockerfile: stream-worker/Dockerfile
+    environment:
+      <<: *worker-environment
+      SERVICE_NAME: stream-worker
+    depends_on:
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  alert-worker:
+    build:
+      context: ./workers
+      dockerfile: alert-worker/Dockerfile
+    environment:
+      <<: *worker-environment
+      SERVICE_NAME: alert-worker
+    depends_on:
+      kafka:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  kpi-job:
+    profiles: [batch]
+    build:
+      context: ./workers
+      dockerfile: kpi-job/Dockerfile
+    environment:
+      <<: *worker-environment
+      SERVICE_NAME: kpi-job
+    depends_on:
+      timescaledb:
+        condition: service_healthy
 
 volumes:
   timescale_data:

@@ -123,3 +123,26 @@ jobs:
       - name: Database logs
         if: failure()
         run: docker compose -f services/docker-compose.yml logs timescaledb
+
+  e2e:
+    name: End-to-end APIs, Kafka, alerts and KPI job
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IOT_DB_PASSWORD: ci-test-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and launch real services
+        run: |
+          docker compose -f services/docker-compose.yml up -d --build \
+            timescaledb kafka ingestion device-registry telemetry-worker stream-worker alert-worker
+      - name: Exercise device API and full data flow
+        run: bash scripts/smoke-local.sh
+      - name: Inspect stack on failure
+        if: failure()
+        run: |
+          docker compose -f services/docker-compose.yml ps -a
+          docker compose -f services/docker-compose.yml logs --tail=250
+      - name: Shut down test stack
+        if: always()
+        run: docker compose -f services/docker-compose.yml down -v --remove-orphans

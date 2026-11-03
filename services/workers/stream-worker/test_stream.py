@@ -118,3 +118,20 @@ def test_alert_id_is_stable_across_replays(monkeypatch):
     processor.emit_alert(reading, "threshold_breach", "critical", "over", 90.0, 85.0)
     processor.emit_alert(reading, "threshold_breach", "critical", "over", 90.0, 85.0)
     assert producer.messages[0]["alertId"] == producer.messages[1]["alertId"]
+
+
+def test_kafka_consumer_waits_on_idle_topic(monkeypatch):
+    import common.kafka as transport
+
+    captured = {}
+
+    class StubConsumer:
+        def __init__(self, *topics, **options):
+            captured.update(options)
+
+    monkeypatch.setattr(transport, "_KafkaConsumer", StubConsumer)
+    transport.KafkaConsumer("iot.telemetry", group_id="stream-worker")
+
+    assert captured["enable_auto_commit"] is False
+    # A zero consumer timeout exits an idle stream and causes a restart storm.
+    assert "consumer_timeout_ms" not in captured
