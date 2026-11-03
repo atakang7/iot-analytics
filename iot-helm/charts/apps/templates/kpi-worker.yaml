@@ -25,6 +25,7 @@ spec:
           containers:
             - name: kpi-job
               image: {{ include "iot.image" (dict "name" "kpi-job" "values" .Values) | quote }}
+              imagePullPolicy: {{ if eq .Values.imageMode "kind" }}Never{{ else if eq .Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
               env:
                 - name: SERVICE_NAME
                   value: kpi-job

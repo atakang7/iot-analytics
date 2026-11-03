@@ -77,6 +77,12 @@ def validate_manifests(manifests: list[dict], public_routes: bool = False, relea
         assert container["securityContext"]["readOnlyRootFilesystem"] is True
         assert container["readinessProbe"]["httpGet"]["path"] == "/metrics"
 
+    # The Prometheus static target must actually resolve through a Service.
+    for name in ("ingestion", "device-registry"):
+        ports = {p["name"]: p for p in by_kind[("Service", name)]["spec"]["ports"]}
+        assert ports["metrics"]["port"] == 9090, f"{name} metrics Service missing"
+        assert ports["metrics"]["targetPort"] == "management", name
+
     prometheus_image = by_kind[("Deployment", "prometheus")]["spec"]["template"]["spec"]["containers"][0]["image"]
     assert prometheus_image == "prom/prometheus:v3.15.1"
     routes = {name for kind, name in by_kind if kind == "Route"}

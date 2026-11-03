@@ -100,6 +100,15 @@ checks that each promoted release appeared in the preceding environment's
 **Git history**. All states initially contain `null` because publication and
 cluster deployments have not yet occurred. No live deployment is implied.
 
+## Kubernetes runtime proof
+
+`make kind-up` provisions a disposable Kubernetes cluster and the six
+applications, and `make kind-smoke` verifies **actual Pods, Services, Java
+health/metrics, Kafka, TimescaleDB, deduplicated alerts and the KPI CronJob**.
+`make kind-down` deletes only that named ephemeral cluster. The same proof
+runs in GitHub Actions; see [infra/kind](infra/kind/README.md) and
+[validation/](validation/README.md).
+
 ## Verification and operating limits
 
 Pull requests run Python tests, Java tests, **six image builds**, Helm lint and
