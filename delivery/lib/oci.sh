@@ -26,10 +26,24 @@ oci_build() {
 
 oci_scan() {
   local archive="$1" sbom="$2"
+  local layout
   test -s "$archive"
-  trivy image --input "$archive" --scanners vuln \
-    --severity CRITICAL --exit-code 1
-  trivy image --input "$archive" --format cyclonedx --output "$sbom"
+  layout="$(mktemp -d)"
+  # Trivy --input detects an OCI *directory*, not an OCI tar archive. Scan
+  # the unpacked layout, but publish the original untouched archive.
+  tar -xf "$archive" -C "$layout"
+  test -s "$layout/index.json"
+  test -s "$layout/oci-layout"
+  if ! trivy image --input "$layout" --scanners vuln \
+      --severity CRITICAL --exit-code 1; then
+    rm -rf "$layout"
+    return 1
+  fi
+  if ! trivy image --input "$layout" --format cyclonedx --output "$sbom"; then
+    rm -rf "$layout"
+    return 1
+  fi
+  rm -rf "$layout"
   python3 - "$sbom" <<'PY'
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as f:
