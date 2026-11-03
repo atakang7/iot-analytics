@@ -6,8 +6,8 @@ Commands below assume the repository root, Docker Compose v2 and Bash.
 
 ```bash
 cp services/.env.example services/.env
-# Set IOT_DB_PASSWORD in services/.env to a randomly generated password.
-openssl rand -hex 32
+# This is for a fresh environment only; keep the old value on restarts.
+printf 'IOT_DB_PASSWORD=%s\n' "$(openssl rand -hex 32)" > services/.env
 chmod 600 services/.env
 
 docker compose -f services/docker-compose.yml up -d --build
@@ -84,5 +84,6 @@ to permanently erase your local data.**
 
 This repository's Helm chart is **OpenShift-specific**. GitHub Actions
 validates the chart syntax but does not provision/validate a live cluster.
-The legacy self-polling CD controller is off by default. See
-[iot-helm/README.md](iot-helm/README.md) before enabling a component.
+There is no automatic OpenShift CD controller. See
+[iot-helm/README.md](iot-helm/README.md) and
+[docs/OPENSHIFT.md](docs/OPENSHIFT.md) for the manual lab deployment boundary.

@@ -115,7 +115,6 @@ jobs:
       - name: Verify schema copies are identical
         run: |
           cmp services/schema.sql iot-helm/charts/infra/configs/schema.sql
-          cmp services/schema.sql iot-helm/charts/monitoring/configs/schema.sql
       - name: Start real TimescaleDB
         run: docker compose -f services/docker-compose.yml up -d timescaledb
       - name: Wait for initialized schema

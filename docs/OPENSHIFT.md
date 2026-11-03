@@ -18,7 +18,7 @@ For a *real* OpenShift environment, verify separately:
 4. `oc rollout status deployment/telemetry-worker -n "$NAMESPACE"` and others.
 5. The Kafka → TimescaleDB → alert pipeline with a real telemetry event.
 
-Do not use the legacy `ci-cd` controller as a production release gate.
+The legacy in-cluster CD controller was removed. No GitHub Actions workflow deploys to OpenShift; promotion and rollback remain operator-owned.
 
 ## Visibility and metrics
 

@@ -1,6 +1,6 @@
 apiVersion: v2
 name: iot-analytics
-description: IoT Analytics Platform
+description: IoT Analytics OpenShift lab
 version: 1.0.0
 appVersion: "1.0.0"
 
@@ -9,18 +9,11 @@ dependencies:
     version: "1.0.0"
     repository: "file://charts/infra"
     condition: infra.enabled
-    
   - name: apps
     version: "1.0.0"
     repository: "file://charts/apps"
     condition: apps.enabled
-    
   - name: monitoring
     version: "1.0.0"
     repository: "file://charts/monitoring"
     condition: monitoring.enabled
-    
-  - name: ci-cd
-    version: "1.0.0"
-    repository: "file://charts/ci-cd"
-    condition: ci-cd.enabled

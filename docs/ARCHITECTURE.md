@@ -71,11 +71,11 @@ A defensible energy calculation would require power units and time integration.
 
 `services/docker-compose.yml` is the tested local topology, with internal
 broker networking and host-bound API/database ports. `iot-helm/` includes
-OpenShift ImageStreams, BuildConfigs, Routes and a legacy CI/CD controller.
+OpenShift ImageStreams, BuildConfigs and Routes.
 These are **not portable Kubernetes primitives** and are not exercised
 against an OpenShift cluster by GitHub Actions.
 
-The legacy controller is disabled by default. It is not integrated with the
-new verification workflow and must not be mistaken for a release gate.
-Prefer explicit operator-controlled deployments until an image digest/
-promotion-driven CD design is implemented.
+No automated OpenShift deployment controller is included. Deployments require
+deliberate operator action, after verifying images and cluster prerequisites.
+A future release pipeline should promote immutable image digests and support
+rollback; local CI success is not deployment evidence.
