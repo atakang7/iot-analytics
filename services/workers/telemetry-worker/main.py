@@ -1,77 +1,94 @@
-#!/usr/bin/env python3
-"""
-Telemetry Worker (Batched - Simple)
-Kafka: iot.telemetry → TimescaleDB: telemetry
-"""
-import sys
-import time
-sys.path.insert(0, "/app")
+"""Kafka telemetry consumer: bounded batches -> TimescaleDB.
 
-from common.config import KAFKA_TELEMETRY_TOPIC
-from common.kafka import KafkaConsumer
+The database transaction finishes BEFORE the Kafka consumer offset is committed.
+"""
+from psycopg2.extras import execute_values
+
+from common.config import KAFKA_TELEMETRY_TOPIC, METRICS_PORT
 from common.db import get_connection
-from common.models import Telemetry
-from common.metrics import start_metrics_server, telemetry_received, telemetry_stored, processing_errors
+from common.kafka import KafkaConsumer
 from common.logger import get_logger
+from common.metrics import (
+    processing_errors,
+    start_metrics_server,
+    telemetry_received,
+    telemetry_stored,
+)
+from common.models import Telemetry
 
 log = get_logger("telemetry-worker")
+BATCH_SIZE = 500
 
-BATCH_SIZE = 1000
-FLUSH_INTERVAL_SEC = 0.15
 
-def flush_batch(batch):
-    """Insert batch in single transaction"""
+def flush_batch(batch: list[dict]) -> int:
     if not batch:
         return 0
-    
     conn = get_connection()
-    cur = conn.cursor()
-    
     try:
-        cur.executemany(
-            """INSERT INTO telemetry (time, device_id, device_type, sensor_id, sensor_type, value, unit)
-               VALUES (%(time)s, %(device_id)s, %(device_type)s, %(sensor_id)s, %(sensor_type)s, %(value)s, %(unit)s)""",
-            batch
-        )
+        with conn.cursor() as cursor:
+            execute_values(
+                cursor,
+                """INSERT INTO telemetry
+                   (time, device_id, device_type, sensor_id, sensor_type, value, unit)
+                   VALUES %s
+                   ON CONFLICT (device_id, sensor_id, time) DO NOTHING
+                   RETURNING device_type""",
+                [
+                    (
+                        row["time"],
+                        row["device_id"],
+                        row["device_type"],
+                        row["sensor_id"],
+                        row["sensor_type"],
+                        row["value"],
+                        row["unit"],
+                    )
+                    for row in batch
+                ],
+                fetch=True,
+            )
+            inserted = cursor.fetchall() if False else cursor.rowcount
         conn.commit()
-        return len(batch)
+        return inserted
     except Exception:
         conn.rollback()
         raise
     finally:
-        cur.close()
-        conn.close()  # Close connection after use
+        conn.close()
 
 
 def main():
-    log.info("Starting telemetry-worker", extra={"extra": {"batch_size": BATCH_SIZE}})
-    start_metrics_server(8000)
+    start_metrics_server(METRICS_PORT)
+    consumer = KafkaConsumer(KAFKA_TELEMETRY_TOPIC, group_id="telemetry-worker")
+    log.info("Consuming telemetry", extra={"extra": {"topic": KAFKA_TELEMETRY_TOPIC}})
+    try:
+        while True:
+            messages = consumer.poll(timeout_ms=500, max_records=BATCH_SIZE)
+            if not messages:
+                continue
+            try:
+                readings = [Telemetry.from_dict(message) for message in messages]
+                batch = [reading.to_db_row() for reading in readings]
+                stored = flush_batch(batch)
+                consumer.commit()
+                for reading in readings:
+                    telemetry_received.labels(
+                        device_type=reading.device_type, sensor_type=reading.sensor_type
+                    ).inc()
+                # Counter reflects successful DB INSERTs, not duplicate Kafka replays.
+                telemetry_stored.labels(device_type="all").inc(stored)
+                log.info(
+                    "Batch committed", extra={"extra": {"received": len(batch), "inserted": stored}}
+                )
+            except Exception as exc:
+                processing_errors.labels(
+                    worker="telemetry", error_type=type(exc).__name__
+                ).inc()
+                log.exception("Batch failed before offset commit")
+                raise
+    finally:
+        consumer.close()
 
-    consumer = KafkaConsumer(topic=KAFKA_TELEMETRY_TOPIC, group_id="telemetry-worker")
-    log.info("Listening", extra={"extra": {"topic": KAFKA_TELEMETRY_TOPIC}})
-
-    batch = []
-    last_flush = time.time()
-
-    for msg in consumer:
-        try:
-            t = Telemetry.from_dict(msg)
-            telemetry_received.labels(device_type=t.device_type, sensor_type=t.sensor_type).inc()
-            batch.append(t.to_db_row())
-
-            # Flush conditions
-            if len(batch) >= BATCH_SIZE or (time.time() - last_flush) >= FLUSH_INTERVAL_SEC:
-                n = flush_batch(batch)
-                for row in batch:
-                    telemetry_stored.labels(device_type=row["device_type"]).inc()
-                log.info("Stored batch", extra={"extra": {"count": n}})
-                batch = []
-                last_flush = time.time()
-
-        except Exception as e:
-            log.exception("Error")
-            processing_errors.labels(worker="telemetry", error_type=type(e).__name__).inc()
-  
 
 if __name__ == "__main__":
     main()
