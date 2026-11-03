@@ -48,12 +48,12 @@ jobs:
           - alert-worker
           - kpi-job
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: aquasecurity/setup-trivy@v0.2.0
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: v0.74.0
-      - uses: sigstore/cosign-installer@v4.1.2
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
       - name: Install exact-copy transport
         run: sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
       - name: Scan OCI, preserve digest at GHCR, sign and verify
@@ -61,7 +61,7 @@ jobs:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REGISTRY_USER: ${{ github.actor }}
         run: bash delivery/bin/publish-image "${{ matrix.service }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: published-${{ matrix.service }}
           if-no-files-found: error
@@ -77,8 +77,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           pattern: published-*
           path: published
@@ -88,7 +88,7 @@ jobs:
           python3 delivery/assemble.py --identity-dir published --output release.json
           python3 delivery/release.py validate release.json
           python3 delivery/release.py helm-values release.json --output release-values.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: immutable-release
           if-no-files-found: error
