@@ -1,11 +1,16 @@
-# Telemetry wire contract
+Part of [iot-analytics](../../README.md).
 
-Ingestion returns HTTP 400 for a malformed reading before attempting Kafka publication.
+# telemetry contract
 
-Both Java and Python accept ISO 8601 timestamps with offsets, source and sensor identifiers of 1 to 128 characters, and units of 1 to 64 characters. Leading and trailing whitespace-only identifiers are invalid.
+HTTP ingestion and Python Kafka consumers validate the same reading payload.
 
-Scalar sensors use a finite JSON number in `value.value`. Vibration readings use at least one of `value.x`, `value.y` or `value.z`; every supplied axis must be a finite JSON number. Unspecified vibration axes count as zero. Numeric strings, booleans, null and non-finite numbers are invalid.
+## Test
 
-Java enforces the contract with Bean Validation at the HTTP boundary. Python rechecks it when decoding events from Kafka, including events sent by clients that bypass the API.
+```bash
+mvn -B -ntp -f services/ingestion/pom.xml verify
+(cd services/workers/telemetry-worker && PYTHONPATH=.. python -m pytest -q)
+```
 
-The identifier and timestamp still define storage uniqueness. This contract does not add a registry foreign key, enforce device ownership or create a dead-letter topic.
+## Interfaces
+
+`POST /telemetry` rejects invalid JSON fields with HTTP `400`. Python consumers recheck Kafka events that bypass HTTP ingestion. See the [field rules](../../docs/reference/events.md) and [API statuses](../../docs/reference/api.md).
