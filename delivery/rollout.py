@@ -11,6 +11,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import yaml
+
 from release import ReleaseError, SERVICES, helm_values
 from state import load_state, verify
 
@@ -74,6 +76,28 @@ def image_signature_commands(release, expected_repo):
     ]
 
 
+def verify_rendered(manifests, release):
+    documents = [doc for doc in yaml.safe_load_all(manifests) if doc]
+    allowed = {"Deployment", "Service", "CronJob"}
+    if not documents or any(d.get("kind") not in allowed for d in documents):
+        raise ReleaseError("Unexpected infrastructure, build, route or privileged resource in app release")
+    observed = {}
+    for doc in documents:
+        kind = doc["kind"]
+        name = doc["metadata"]["name"]
+        if kind not in {"Deployment", "CronJob"}:
+            continue
+        pod = (doc["spec"]["jobTemplate"]["spec"]["template"]["spec"]
+               if kind == "CronJob" else doc["spec"]["template"]["spec"])
+        containers = pod["containers"]
+        if len(containers) != 1 or name in observed:
+            raise ReleaseError("Invalid or duplicate app workload")
+        observed[name] = containers[0]["image"]
+    if observed != release["images"]:
+        raise ReleaseError("Rendered chart images do not exactly match all six Git digests")
+    return documents
+
+
 def helm_commands(environment, namespace, context, values_file, rendered):
     name = f"iot-apps-{environment}"
     chart = str(ROOT / "iot-helm/charts/apps")
@@ -129,13 +153,12 @@ def execute(args):
         root = Path(tmp)
         values = root / "values.json"
         rendered = root / "manifests.yaml"
-        values.write_text(json.dumps(helm_values(release), sort_keys=True) + "\n")
+        values.write_text(json.dumps(helm_values(release)["apps"], sort_keys=True) + "\n")
         name, template, dryrun, upgrade = helm_commands(
             args.environment, args.namespace, args.context, values, rendered
         )
         rendered.write_text(checked(template) + "\n")
-        if not rendered.read_text().strip():
-            raise ReleaseError("Helm rendered no Kubernetes manifests")
+        verify_rendered(rendered.read_text(), release)
 
         # Offline plan never contacts the cluster and cannot perform an install.
         if not args.apply:
