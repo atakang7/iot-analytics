@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Install the complete private observability path in a named disposable kind cluster.
+set -Eeuo pipefail
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+CLUSTER="iot-analytics"
+APP_NAMESPACE="iot-validation"
+OBS_NAMESPACE="iot-observability"
+
+[[ "$(kubectl config current-context)" == "kind-$CLUSTER" ]] || {
+  echo "Observability install is restricted to the known disposable kind cluster" >&2
+  exit 1
+}
+kubectl get namespace "$APP_NAMESPACE" >/dev/null
+if kubectl get namespace "$OBS_NAMESPACE" >/dev/null 2>&1; then
+  echo "Refusing to mutate existing observability namespace" >&2
+  exit 1
+fi
+
+kubectl create namespace "$OBS_NAMESPACE"
+kubectl -n "$OBS_NAMESPACE" create configmap prometheus-config \
+  --from-file="prometheus.yml=$ROOT/platform/observability/config/prometheus.yml" \
+  --from-file="rules.yml=$ROOT/platform/observability/config/rules.yml"
+kubectl -n "$OBS_NAMESPACE" create configmap loki-config \
+  --from-file="loki.yml=$ROOT/platform/observability/config/loki.yml"
+kubectl -n "$OBS_NAMESPACE" create configmap alertmanager-config \
+  --from-file="alertmanager.yml=$ROOT/platform/observability/config/alertmanager.yml"
+kubectl -n "$OBS_NAMESPACE" create configmap grafana-datasources \
+  --from-file="datasources.yml=$ROOT/platform/observability/config/datasources.yml"
+kubectl -n "$OBS_NAMESPACE" create configmap grafana-provider \
+  --from-file="dashboards.yml=$ROOT/platform/observability/config/dashboards.yml"
+kubectl -n "$OBS_NAMESPACE" create configmap grafana-dashboards \
+  --from-file="$ROOT/iot-helm/charts/monitoring/configs/dashboards/iot-overview.json" \
+  --from-file="$ROOT/iot-helm/charts/monitoring/configs/dashboards/iot-logs.json"
+
+password="$(openssl rand -hex 24)"
+kubectl -n "$OBS_NAMESPACE" create secret generic grafana-admin \
+  --from-literal=username=admin --from-literal="password=$password"
+unset password
+
+kubectl -n "$OBS_NAMESPACE" apply -f "$ROOT/platform/observability/kind/stack.yaml"
+for name in prometheus loki alertmanager grafana; do
+  kubectl -n "$OBS_NAMESPACE" rollout status "deployment/$name" --timeout=300s
+done
+
+docker build -t iot/log-collector:kind "$ROOT/platform/observability/collector"
+kind load docker-image iot/log-collector:kind --name "$CLUSTER"
+kubectl -n "$APP_NAMESPACE" apply -f "$ROOT/platform/observability/collector/kind.yaml"
+kubectl -n "$APP_NAMESPACE" rollout status deployment/iot-log-collector --timeout=180s
+echo "PASS: isolated observability pods and scoped log collector are deployed"
