@@ -9,6 +9,7 @@ SERVICE_NAME = os.getenv("SERVICE_NAME", "unknown")
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
 KAFKA_TELEMETRY_TOPIC = os.getenv("KAFKA_TELEMETRY_TOPIC", "iot.telemetry")
 KAFKA_ALERTS_TOPIC = os.getenv("KAFKA_ALERTS_TOPIC", "iot.alerts")
+KAFKA_QUARANTINE_TOPIC = os.getenv("KAFKA_QUARANTINE_TOPIC", "iot.quarantine")
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")

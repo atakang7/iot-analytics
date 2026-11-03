@@ -67,3 +67,9 @@ processing_errors = Counter(
     "Processing errors",
     ["worker", "error_type"]
 )
+
+quarantined_messages = Counter(
+    "iot_quarantined_messages_total",
+    "Malformed Kafka records copied to quarantine before offset commit",
+    ["worker", "reason"],
+)
