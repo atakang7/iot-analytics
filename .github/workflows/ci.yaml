@@ -48,6 +48,8 @@ jobs:
           set -euo pipefail
           for script in scripts/*.sh simulator/*.sh infra/kind/bin/* validation/kind/*.sh policies/bin/* platform/observability/bin/* validation/observability/*.sh infra/cluster/bin/* validation/cluster/*.sh; do bash -n "$script"; done
           python -m unittest discover -s security -p 'test_*.py' -v
+          python -m unittest discover -s scripts -p 'test_verify_docs.py' -v
+          python scripts/verify-docs.py
           (cd platform/observability/collector && python -m unittest discover -p 'test_*.py' -v)
           python -m compileall -q platform/observability/collector validation/observability
           python -m compileall -q system-test
