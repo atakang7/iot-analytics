@@ -116,6 +116,14 @@ health/metrics, Kafka, TimescaleDB, deduplicated alerts and the KPI CronJob**.
 runs in GitHub Actions; see [infra/kind](infra/kind/README.md) and
 [validation/](validation/README.md).
 
+## Live observability validation
+
+The [platform observability layer](platform/observability/README.md) launches
+Prometheus, Loki, Grafana and Alertmanager in a separate private namespace.
+A least-privilege collector reads only IoT application logs; GitHub Actions
+checks five live metric targets, loaded alert rules, both Grafana datasources,
+and actual worker log lines arriving in Loki.
+
 ## Verification and operating limits
 
 Pull requests run Python tests, Java tests, **six image builds**, Helm lint and

@@ -46,8 +46,10 @@ jobs:
       - name: Validate operational shell scripts and load test
         run: |
           set -euo pipefail
-          for script in scripts/*.sh simulator/*.sh infra/kind/bin/* validation/kind/*.sh policies/bin/*; do bash -n "$script"; done
+          for script in scripts/*.sh simulator/*.sh infra/kind/bin/* validation/kind/*.sh policies/bin/* platform/observability/bin/* validation/observability/*.sh; do bash -n "$script"; done
           python -m unittest discover -s security -p 'test_*.py' -v
+          (cd platform/observability/collector && python -m unittest discover -p 'test_*.py' -v)
+          python -m compileall -q platform/observability/collector validation/observability
           python -m compileall -q system-test
           python -m unittest discover -s system-test -p 'test_*.py' -v
       - name: Test every worker
@@ -97,6 +99,7 @@ jobs:
           for worker in telemetry-worker stream-worker alert-worker kpi-job; do
             docker build -t "iot/${worker}:ci" -f "services/workers/${worker}/Dockerfile" services/workers
           done
+          docker build -t iot/log-collector:ci platform/observability/collector
 
   helm:
     name: Helm chart validation
@@ -134,6 +137,10 @@ jobs:
             --set apps.imageMode=kind --set infra.enabled=false \
             --set monitoring.enabled=false > /tmp/iot-kind.yaml
           python3 scripts/verify-kind.py /tmp/iot-kind.yaml
+          python3 scripts/verify-observability.py
+          docker run --rm --entrypoint /bin/promtool \
+            -v "$PWD/platform/observability/config:/etc/prometheus:ro" \
+            prom/prometheus:v3.15.1 check config /etc/prometheus/prometheus.yml
 
   release-state:
     name: Git state and promotion history policy
@@ -237,6 +244,10 @@ jobs:
         run: bash infra/kind/bin/up
       - name: Cross-service Kubernetes E2E proof
         run: bash validation/kind/e2e.sh
+      - name: Deploy isolated Prometheus, Loki, Grafana and Alertmanager
+        run: bash platform/observability/bin/up
+      - name: Prove actual metrics, alert rules, dashboards and log delivery
+        run: bash validation/observability/smoke.sh
       - name: Inspect Kubernetes state on failure
         if: failure()
         run: |
@@ -247,6 +258,12 @@ jobs:
           kubectl -n iot-dependencies get events --sort-by=.metadata.creationTimestamp || true
           kubectl -n iot-dependencies logs deployment/kafka --tail=120 || true
           kubectl -n iot-dependencies logs deployment/timescaledb --tail=120 || true
+          kubectl -n iot-observability get pods -o wide || true
+          kubectl -n iot-observability get events --sort-by=.metadata.creationTimestamp || true
+          kubectl -n iot-observability logs deployment/prometheus --tail=100 || true
+          kubectl -n iot-observability logs deployment/loki --tail=100 || true
+          kubectl -n iot-observability logs deployment/grafana --tail=100 || true
+          kubectl -n iot-validation logs deployment/iot-log-collector --tail=100 || true
           for name in ingestion device-registry telemetry-worker stream-worker alert-worker; do
             kubectl -n iot-validation logs "deployment/$name" --all-containers --tail=150 || true
           done
