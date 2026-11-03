@@ -26,3 +26,8 @@ runtime health checks, admission policy or cryptographic signature verification.
 Promotion copies the **same six OCI digests and source SHA**. It never rebuilds
 or substitutes tags. A PR that changes stage/prod in the same commit as
 introducing a new dev release fails the history gate.
+
+After a reviewed merge of release state, an authorized operator may use
+[delivery/rollout.py](../delivery/rollout.py) to plan or explicitly apply the
+exact signed image set. It does not build images, mutate credentials or deploy
+stateful infrastructure. Production cluster action remains opt-in.
