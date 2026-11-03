@@ -86,6 +86,15 @@ curl -i http://127.0.0.1:8081/telemetry \
 `202` means Kafka accepted the event, **not** that downstream storage/analytics
 has completed. See [event semantics](docs/ARCHITECTURE.md).
 
+## Signed, Git-controlled deployment
+
+[DELIVERY.md](DELIVERY.md) now defines the full release contract. The
+operator-owned [rollout](delivery/rollout.py) requires committed Git state,
+six verified main-workflow Cosign signatures, explicit context/namespace
+approval, a Kubernetes server dry-run and a separate apps-only Helm
+release with readiness and image-digest checks. It never deploys the mutable
+OpenShift lab BuildConfigs or changes stateful infrastructure.
+
 ## Immutable release and promotion
 
 The [delivery workflow](delivery/README.md) implements build-once OCI
