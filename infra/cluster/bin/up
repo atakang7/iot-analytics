@@ -12,6 +12,10 @@ fi
 kind create cluster --name "$CLUSTER" --config "$ROOT/infra/cluster/kind.yaml" \
   --image "$IMAGE" --wait 240s
 [[ "$(kubectl config current-context)" == "kind-$CLUSTER" ]] || exit 1
+# Kind's --wait can return before both new workers join and become Ready.
+kubectl wait --for=condition=Ready nodes --all --timeout=240s
+kubectl -n kube-system rollout status deployment/coredns --timeout=180s
+kubectl -n local-path-storage rollout status deployment/local-path-provisioner --timeout=180s
 kubectl create namespace iot-admission-proof
 kubectl label namespace iot-admission-proof iot-policy=enforce
 kubectl apply -f "$ROOT/policies/admission.yaml"
