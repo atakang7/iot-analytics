@@ -39,7 +39,7 @@ curl -i http://127.0.0.1:8081/telemetry \
   -d '{"deviceId":"motor-1","deviceType":"motor","sensorId":"temp-1","sensorType":"temperature","timestamp":"2026-11-03T10:00:00Z","unit":"celsius","value":{"value":72.5}}'
 ```
 
-Current ingestion validation checks required string fields, timestamp parsing and a nonempty measurement object. It does not enforce every numeric sensor shape. Workers can reject a payload after Kafka accepted it.
+Ingestion rejects numeric strings, booleans, non-finite numbers and missing sensor values before publication. Scalar sensors need a numeric `value.value`. Vibration needs at least one numeric axis from `x`, `y` or `z`. Python consumers repeat those checks for producers that bypass HTTP.
 
 ## Internal management endpoints
 

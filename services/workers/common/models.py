@@ -7,9 +7,15 @@ from typing import Optional
 
 
 def _finite_number(value):
-    number = float(value)
+    # Python's bool is an int, but true/false are not sensor measurements.
+    if isinstance(value, bool) or not isinstance(value, (float, int)):
+        raise ValueError("Sensor readings must be JSON numbers")
+    try:
+        number = float(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError("Sensor reading is outside numeric range") from exc
     if not math.isfinite(number):
-        raise ValueError("Sensor readings must be finite numbers")
+        raise ValueError("Sensor readings must be finite")
     return number
 
 
@@ -25,22 +31,46 @@ class Telemetry:
 
     @classmethod
     def from_dict(cls, data: dict) -> "Telemetry":
-        timestamp = datetime.fromisoformat(data["timestamp"].replace("Z", "+00:00"))
+        if not isinstance(data, dict):
+            raise ValueError("Telemetry must be an object")
+        fields = ("deviceId", "deviceType", "sensorId", "sensorType")
+        if any(
+            not isinstance(data.get(field), str)
+            or not 0 < len(data[field].strip()) <= 128
+            for field in fields
+        ):
+            raise ValueError("Device and sensor fields must have 1 to 128 characters")
+        unit = data.get("unit")
+        if not isinstance(unit, str) or not 0 < len(unit.strip()) <= 64:
+            raise ValueError("Unit must have 1 to 64 characters")
+        raw_time = data.get("timestamp")
+        if not isinstance(raw_time, str):
+            raise ValueError("Timestamp must be an ISO 8601 string")
+        try:
+            timestamp = datetime.fromisoformat(raw_time.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("Timestamp is not ISO 8601") from exc
         if timestamp.tzinfo is None:
-            raise ValueError("timestamp must specify a UTC offset")
-        if not isinstance(data["value"], dict):
-            raise ValueError("value must be a JSON object")
-        identifiers = (data["deviceId"], data["deviceType"], data["sensorId"], data["sensorType"])
-        if any(not isinstance(v, str) or not v.strip() for v in identifiers):
-            raise ValueError("device and sensor identifiers must be non-empty strings")
+            raise ValueError("Timestamp must specify a UTC offset")
+        payload = data.get("value")
+        if not isinstance(payload, dict) or not payload:
+            raise ValueError("Measurement must be a nonempty JSON object")
+        if data["sensorType"] == "vibration":
+            axes = [payload[axis] for axis in ("x", "y", "z") if axis in payload]
+            if not axes:
+                raise ValueError("Vibration requires at least one axis")
+            for axis in axes:
+                _finite_number(axis)
+        else:
+            _finite_number(payload.get("value"))
         return cls(
             device_id=data["deviceId"],
             device_type=data["deviceType"],
             sensor_id=data["sensorId"],
             sensor_type=data["sensorType"],
             timestamp=timestamp,
-            unit=data["unit"],
-            value=data["value"],
+            unit=unit,
+            value=payload,
         )
 
     def scalar_value(self) -> Optional[float]:
@@ -49,8 +79,12 @@ class Telemetry:
     def vibration_rms(self) -> Optional[float]:
         if self.sensor_type != "vibration":
             return None
-        x, y, z = (_finite_number(self.value.get(axis, 0)) for axis in ("x", "y", "z"))
-        return math.sqrt(x * x + y * y + z * z)
+        result = math.hypot(
+            *(_finite_number(self.value.get(axis, 0)) for axis in ("x", "y", "z"))
+        )
+        if not math.isfinite(result):
+            raise ValueError("Vibration magnitude must be finite")
+        return result
 
     def to_db_row(self) -> dict:
         return {
