@@ -1,119 +1,96 @@
 #!/usr/bin/env python3
-"""IoT Device Simulator - Generates realistic sensor telemetry"""
-import os, json, time, random, math, urllib.request
+"""IoT simulator for the ingestion API's documented telemetry envelope."""
+import json
+import math
+import os
+import random
+import time
+import urllib.request
 from datetime import datetime, timezone
 
-INGESTION_URL = os.getenv("INGESTION_URL", "http://ingestion:8080/telemetry")
+INGESTION_URL = os.getenv("INGESTION_URL", "http://localhost:8081/telemetry")
 DEVICE_ID = os.getenv("DEVICE_ID", "device-001")
 DEVICE_TYPE = os.getenv("DEVICE_TYPE", "motor")
 INTERVAL_MS = int(os.getenv("INTERVAL_MS", "5000"))
 SENSORS_JSON = os.getenv("SENSORS", "[]")
 
+
 class Simulator:
     def __init__(self):
         self.states = {}
-        self.start_time = time.time()
-    
-    def get_reading(self, sensor_type, config):
-        min_v, max_v = config.get("min", 0), config.get("max", 100)
-        pattern = config.get("pattern", "normal")
-        key = f"{sensor_type}_{config.get('id', '')}"
-        
-        if key not in self.states:
-            base = (min_v + max_v) / 2
-            self.states[key] = {"base": base, "current": base, "trend": 0, "noise": config.get("noise", 0.1)}
-        
-        s = self.states[key]
-        elapsed = time.time() - self.start_time
-        
-        if pattern == "normal":
-            noise = random.gauss(0, s["noise"] * (max_v - min_v) * 0.01)
-            reversion = (s["base"] - s["current"]) * 0.05
-            value = s["current"] + noise + reversion
-        elif pattern == "cyclic":
-            period = config.get("period_seconds", 3600)
-            amplitude = (max_v - min_v) * 0.3
-            cycle = math.sin(2 * math.pi * elapsed / period) * amplitude
-            noise = random.gauss(0, s["noise"] * amplitude * 0.1)
-            value = s["base"] + cycle + noise
-        elif pattern == "load_dependent":
-            load_cycle = (math.sin(elapsed / 300) + 1) / 2
-            load_factor = 0.3 + (load_cycle * 0.7)
-            target = min_v + (max_v - min_v) * load_factor
-            change = (target - s["current"]) * 0.1
-            noise = random.gauss(0, s["noise"] * (max_v - min_v) * 0.01)
-            value = s["current"] + change + noise
-        elif pattern == "spike":
-            noise = random.gauss(0, s["noise"] * (max_v - min_v) * 0.01)
-            reversion = (s["base"] - s["current"]) * 0.05
-            value = s["current"] + noise + reversion
-            if random.random() < config.get("spike_probability", 0.02):
-                spike = random.uniform(1.5, config.get("spike_magnitude", 2.0)) * (max_v - min_v) * 0.2
-                value = min(max_v, value + spike)
-        elif pattern == "drift":
-            s["trend"] += random.gauss(0.0001, 0.00005)
-            s["trend"] = max(-0.01, min(0.01, s["trend"]))
-            drift = s["trend"] * (max_v - min_v)
-            noise = random.gauss(0, s["noise"] * (max_v - min_v) * 0.01)
-            value = s["current"] + drift + noise
-        else:
-            value = s["current"]
-        
-        value = max(min_v, min(max_v, value))
-        s["current"] = value
-        return round(value, 3)
+        self.start_time = time.monotonic()
 
-def send(device_id, device_type, sensor, value):
-    payload = {
+    def get_reading(self, sensor_type, config):
+        minimum, maximum = config.get("min", 0), config.get("max", 100)
+        pattern = config.get("pattern", "normal")
+        key = f"{sensor_type}:{config.get('id', '')}"
+        if key not in self.states:
+            center = (minimum + maximum) / 2
+            self.states[key] = {"base": center, "current": center, "trend": 0.0}
+        state = self.states[key]
+        span = maximum - minimum
+        noise = random.gauss(0, config.get("noise", 0.1) * span * 0.01)
+        elapsed = time.monotonic() - self.start_time
+        value = state["current"]
+
+        if pattern == "cyclic":
+            period = max(1, config.get("period_seconds", 3600))
+            value = state["base"] + math.sin(2 * math.pi * elapsed / period) * span * 0.3 + noise
+        elif pattern == "load_dependent":
+            load = (math.sin(elapsed / 300) + 1) / 2
+            target = minimum + span * (0.3 + load * 0.7)
+            value += (target - value) * 0.1 + noise
+        elif pattern == "spike" and random.random() < config.get("spike_probability", 0.02):
+            value += span * config.get("spike_magnitude", 2.0) * 0.2
+        elif pattern == "drift":
+            state["trend"] = max(-0.01, min(0.01, state["trend"] + random.gauss(0.0001, 0.00005)))
+            value += state["trend"] * span + noise
+        else:
+            value += (state["base"] - value) * 0.05 + noise
+
+        state["current"] = min(max(value, minimum), maximum)
+        return round(state["current"], 3)
+
+
+def payload(device_id, device_type, sensor, reading):
+    value = {"x": reading, "y": 0.0, "z": 0.0} if sensor["type"] == "vibration" else {"value": reading}
+    return {
         "deviceId": device_id,
         "deviceType": device_type,
         "sensorId": sensor["id"],
         "sensorType": sensor["type"],
         "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "unit": sensor["unit"],
-        "value": {"reading": value}
+        "value": value,
     }
+
+
+def send(device_id, device_type, sensor, reading):
+    body = json.dumps(payload(device_id, device_type, sensor, reading)).encode("utf-8")
+    request = urllib.request.Request(
+        INGESTION_URL, data=body, headers={"Content-Type": "application/json"}, method="POST"
+    )
     try:
-        data = json.dumps(payload).encode()
-        req = urllib.request.Request(INGESTION_URL, data=data, headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=5)
-        return resp.status == 200
-    except Exception as e:
-        print(f"Error: {e}")
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return 200 <= response.status < 300
+    except Exception as exc:
+        print(f"Publish error: {exc}", flush=True)
         return False
 
+
 def main():
-    print(f"Device Simulator Starting")
-    print(f"  ID: {DEVICE_ID}")
-    print(f"  Type: {DEVICE_TYPE}")
-    print(f"  Interval: {INTERVAL_MS}ms")
-    print(f"  Ingestion: {INGESTION_URL}")
-    
-    sensors = json.loads(SENSORS_JSON) if SENSORS_JSON else []
+    sensors = json.loads(SENSORS_JSON)
     if not sensors:
-        print("ERROR: No sensors configured!")
-        return
-    
-    print(f"  Sensors: {[s['id'] for s in sensors]}")
-    
-    sim = Simulator()
-    
-    print("Starting telemetry loop...")
-    count = 0
-    errors = 0
+        raise SystemExit("SENSORS must contain at least one sensor")
+    simulator = Simulator()
+    print(f"Simulating {DEVICE_ID} -> {INGESTION_URL}", flush=True)
     while True:
         for sensor in sensors:
-            value = sim.get_reading(sensor["type"], sensor)
-            if send(DEVICE_ID, DEVICE_TYPE, sensor, value):
-                count += 1
-                if count % 20 == 0:
-                    print(f"[{DEVICE_ID}] Sent {count} readings | {sensor['type']}={value}{sensor['unit']}")
-            else:
-                errors += 1
-                if errors % 10 == 0:
-                    print(f"[{DEVICE_ID}] Errors: {errors}")
-        
-        time.sleep(INTERVAL_MS / 1000.0)
+            reading = simulator.get_reading(sensor["type"], sensor)
+            if not send(DEVICE_ID, DEVICE_TYPE, sensor, reading):
+                print(f"Failed to send {sensor['id']}", flush=True)
+        time.sleep(INTERVAL_MS / 1000)
+
 
 if __name__ == "__main__":
     main()

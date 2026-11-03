@@ -23,7 +23,7 @@ class TelemetryControllerTest {
     void returns202OnlyAfterKafkaAcknowledges() throws Exception {
         when(kafka.send(eq("iot.telemetry"), eq("device-1"), anyString()))
                 .thenReturn(CompletableFuture.completedFuture(null));
-        var result = new TelemetryController(kafka, new ObjectMapper())
+        var result = new TelemetryController(kafka, new ObjectMapper().findAndRegisterModules())
                 .ingest(telemetry).get();
         assertEquals(HttpStatus.ACCEPTED, result.getStatusCode());
         assertEquals("accepted", result.getBody().get("status"));
@@ -36,7 +36,7 @@ class TelemetryControllerTest {
         failed.completeExceptionally(new RuntimeException("broker unavailable"));
         when(kafka.send(eq("iot.telemetry"), eq("device-1"), anyString()))
                 .thenReturn(failed);
-        var result = new TelemetryController(kafka, new ObjectMapper())
+        var result = new TelemetryController(kafka, new ObjectMapper().findAndRegisterModules())
                 .ingest(telemetry).get();
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, result.getStatusCode());
         assertEquals("publish_failed", result.getBody().get("status"));
