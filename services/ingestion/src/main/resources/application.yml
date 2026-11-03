@@ -14,9 +14,6 @@ spring:
       properties:
         enable.idempotence: true
         max.in.flight.requests.per.connection: 5
-        max.block.ms: 5000
-        request.timeout.ms: 10000
-        delivery.timeout.ms: 15000
 
 management:
   server:
@@ -30,7 +27,3 @@ management:
     web:
       exposure:
         include: health,prometheus
-
-iot:
-  telemetry:
-    topic: ${KAFKA_TELEMETRY_TOPIC:iot.telemetry}

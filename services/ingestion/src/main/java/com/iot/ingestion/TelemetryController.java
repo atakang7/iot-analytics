@@ -1,14 +1,11 @@
 package com.iot.ingestion;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.json.JsonMapper;
 import org.springframework.http.ResponseEntity;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -21,17 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/telemetry")
 public class TelemetryController {
 
-    private static final Logger log = LoggerFactory.getLogger(TelemetryController.class);
+    private static final String TOPIC = "iot.telemetry";
     private final KafkaTemplate<String, String> kafka;
     private final JsonMapper mapper;
-    private final String topic;
 
-    public TelemetryController(
-            KafkaTemplate<String, String> kafka, JsonMapper mapper,
-            @Value("${iot.telemetry.topic}") String topic) {
+    public TelemetryController(KafkaTemplate<String, String> kafka, JsonMapper mapper) {
         this.kafka = kafka;
         this.mapper = mapper;
-        this.topic = topic;
     }
 
     @PostMapping
@@ -45,23 +38,15 @@ public class TelemetryController {
                     ResponseEntity.badRequest().body(Map.of("status", "invalid_payload")));
         }
 
-        try {
-            return kafka.send(topic, telemetry.deviceId(), json)
-                    .handle((ack, failure) -> {
-                        if (failure != null) {
-                            log.warn("Kafka publish failed", failure);
-                            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                                    .body(Map.of("status", "publish_failed"));
-                        }
-                        return ResponseEntity.accepted()
-                                .body(Map.of("status", "accepted", "deviceId", telemetry.deviceId()));
-                    });
-        } catch (RuntimeException exception) {
-            log.warn("Kafka publish failed", exception);
-            return CompletableFuture.completedFuture(
-                    ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                            .body(Map.of("status", "publish_failed")));
-        }
+        return kafka.send(TOPIC, telemetry.deviceId(), json)
+                .handle((ack, failure) -> {
+                    if (failure != null) {
+                        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                                .body(Map.of("status", "publish_failed"));
+                    }
+                    return ResponseEntity.accepted()
+                            .body(Map.of("status", "accepted", "deviceId", telemetry.deviceId()));
+                });
     }
 
     @GetMapping("/health")
