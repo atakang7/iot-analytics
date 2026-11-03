@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "images": {
+    "alert-worker": "ghcr.io/example/iot-analytics/alert-worker@sha256:0000000000000000000000000000000000000000000000000000000000000001",
+    "device-registry": "ghcr.io/example/iot-analytics/device-registry@sha256:0000000000000000000000000000000000000000000000000000000000000002",
+    "ingestion": "ghcr.io/example/iot-analytics/ingestion@sha256:0000000000000000000000000000000000000000000000000000000000000003",
+    "kpi-job": "ghcr.io/example/iot-analytics/kpi-job@sha256:0000000000000000000000000000000000000000000000000000000000000004",
+    "stream-worker": "ghcr.io/example/iot-analytics/stream-worker@sha256:0000000000000000000000000000000000000000000000000000000000000005",
+    "telemetry-worker": "ghcr.io/example/iot-analytics/telemetry-worker@sha256:0000000000000000000000000000000000000000000000000000000000000006"
+  }
+}

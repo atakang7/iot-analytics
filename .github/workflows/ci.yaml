@@ -88,8 +88,11 @@ jobs:
       - uses: azure/setup-helm@v4.3.0
         with:
           version: v3.16.4
-      - name: Validate chart
+      - name: Validate chart and both deployment modes
         run: |
+          python3 -m unittest discover -s delivery -p 'test_*.py' -v
+          python3 delivery/release.py validate delivery/fixtures/release.test.json
+          python3 delivery/release.py helm-values delivery/fixtures/release.test.json --output /tmp/iot-release-values.json
           helm dependency build iot-helm
           helm lint iot-helm -f iot-helm/values-dev.yaml
           helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml > /tmp/iot-rendered.yaml
@@ -103,6 +106,10 @@ jobs:
           helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml \
             --set apps.routes.enabled=true --set monitoring.routes.grafana=true > /tmp/iot-optional-routes.yaml
           python3 scripts/verify-helm.py /tmp/iot-optional-routes.yaml --routes-enabled
+          helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml \\
+            -f /tmp/iot-release-values.json > /tmp/iot-immutable-release.yaml
+          python3 scripts/verify-helm.py /tmp/iot-immutable-release.yaml \\
+            --release-manifest delivery/fixtures/release.test.json
 
   database:
     name: TimescaleDB initialization and replay invariants

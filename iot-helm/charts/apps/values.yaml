@@ -1,2 +1,6 @@
 routes:
   enabled: false
+
+# lab: binary OpenShift BuildConfigs; release: digest-pinned GHCR images.
+imageMode: lab
+images: {}

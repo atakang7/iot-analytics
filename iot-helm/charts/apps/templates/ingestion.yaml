@@ -1,3 +1,4 @@
+{{- if eq .Values.imageMode "lab" }}
 apiVersion: image.openshift.io/v1
 kind: ImageStream
 metadata:
@@ -25,6 +26,7 @@ spec:
     type: Docker
     dockerStrategy: 
       dockerfilePath: Dockerfile
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -48,8 +50,8 @@ spec:
     spec:
       containers:
         - name: ingestion
-          image: image-registry.openshift-image-registry.svc:5000/atakangul-dev/ingestion:latest
-          imagePullPolicy: Always
+          image: {{ include "iot.image" (dict "name" "ingestion" "values" .Values) | quote }}
+          imagePullPolicy: {{ if eq .Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
           ports:
             - containerPort: 8081
               name: http

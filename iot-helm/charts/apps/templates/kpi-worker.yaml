@@ -24,7 +24,7 @@ spec:
               command: ['sh', '-c', 'until nc -z timescaledb 5432; do echo waiting for db; sleep 2; done']
           containers:
             - name: kpi-job
-              image: image-registry.openshift-image-registry.svc:5000/atakangul-dev/kpi-job:latest
+              image: {{ include "iot.image" (dict "name" "kpi-job" "values" .Values) | quote }}
               env:
                 - name: SERVICE_NAME
                   value: kpi-job
@@ -54,6 +54,7 @@ spec:
                 limits:
                   cpu: 300m
                   memory: 256Mi
+{{- if eq .Values.imageMode "lab" }}
 ---
 apiVersion: image.openshift.io/v1
 kind: ImageStream
@@ -82,3 +83,4 @@ spec:
     type: Docker
     dockerStrategy:
       dockerfilePath: kpi-job/Dockerfile
+{{- end }}
