@@ -83,5 +83,5 @@ spec:
   strategy:
     type: Docker
     dockerStrategy:
-      dockerfilePath: Dockerfile
+      dockerfilePath: {{ printf "%s/Dockerfile" $name | quote }}
 {{- end }}

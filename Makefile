@@ -1,0 +1,36 @@
+SHELL := /usr/bin/env bash
+.DEFAULT_GOAL := help
+COMPOSE := docker compose -f services/docker-compose.yml
+
+.PHONY: help up down ps logs smoke api-smoke kpi
+
+help:
+	@printf '%s\n' 'up          Build and start the local stack' \
+	  'down        Stop containers (preserve database volume)' \
+	  'ps          Inspect container status' \
+	  'logs        Tail recent service logs' \
+	  'smoke       Run complete end-to-end smoke test' \
+	  'api-smoke   Verify ingestion API contract' \
+	  'kpi         Run one closed five-minute KPI window'
+
+up:
+	@test -f services/.env || (echo "Create services/.env from .env.example and set IOT_DB_PASSWORD" >&2; exit 1)
+	$(COMPOSE) up -d --build
+
+down:
+	$(COMPOSE) down
+
+ps:
+	$(COMPOSE) ps
+
+logs:
+	$(COMPOSE) logs --tail=100
+
+smoke:
+	bash scripts/smoke-local.sh
+
+api-smoke:
+	bash scripts/test-ingestion.sh
+
+kpi:
+	$(COMPOSE) --profile batch run --rm kpi-job

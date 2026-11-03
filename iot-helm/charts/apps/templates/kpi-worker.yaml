@@ -58,27 +58,27 @@ spec:
 apiVersion: image.openshift.io/v1
 kind: ImageStream
 metadata:
-  name: kpi-worker
+  name: kpi-job
   labels:
-    app: kpi-worker
+    app: kpi-job
 ---
 apiVersion: build.openshift.io/v1
 kind: BuildConfig
 metadata:
-  name: kpi-worker
+  name: kpi-job
   labels:
-    app: kpi-worker
+    app: kpi-job
 spec:
   successfulBuildsHistoryLimit: 1
   failedBuildsHistoryLimit: 1
   output:
     to:
       kind: ImageStreamTag
-      name: kpi-worker:latest
+      name: kpi-job:latest
   source:
     type: Binary
     binary: {}
   strategy:
     type: Docker
     dockerStrategy:
-      dockerfilePath: Dockerfile
+      dockerfilePath: kpi-job/Dockerfile

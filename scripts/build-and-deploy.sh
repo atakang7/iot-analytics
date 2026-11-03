@@ -1,28 +1,25 @@
+#!/usr/bin/env bash
+# OpenShift binary-image builds. Requires BuildConfigs from iot-helm.
+# This script neither edits the checkout nor masks build failures.
+set -euo pipefail
 
-#!/bin/bash
-set -e
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+NAMESPACE="${NAMESPACE:-atakangul-dev}"
+WORKERS=(telemetry-worker stream-worker alert-worker kpi-job)
+SERVICES=(ingestion device-registry)
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd .. && pwd)"
-WORKERS=(alert-worker stream-worker telemetry-worker kpi-job)
-SERVICES=(device-registry ingestion)
-
-echo "=== Building and Deploying All Workers and Services ==="
-
-for worker in "${WORKERS[@]}"; do
-    echo "Preparing build context for $worker..."
-    rm -rf "$PROJECT_ROOT/services/workers/$worker/common"
-    unlink "$PROJECT_ROOT/services/workers/$worker/common" 2>/dev/null || true
-    cp -r "$PROJECT_ROOT/services/workers/common" "$PROJECT_ROOT/services/workers/$worker/common"
-    echo "Starting OpenShift build for $worker..."
-    oc start-build "$worker" --from-dir="$PROJECT_ROOT/services/workers/$worker" || true
-    rm -rf "$PROJECT_ROOT/services/workers/$worker/common"
-    unlink "$PROJECT_ROOT/services/workers/$worker/common" 2>/dev/null || true
+for component in "${WORKERS[@]}"; do
+  echo "Building $component from shared worker Docker context"
+  oc get buildconfig "$component" -n "$NAMESPACE" >/dev/null
+  oc start-build "$component" -n "$NAMESPACE" \
+    --from-dir="$ROOT/services/workers" --follow --wait
 done
 
-# Build and start OpenShift builds for services
-for service in "${SERVICES[@]}"; do
-	echo "Starting OpenShift build for $service..."
-	oc start-build "$service" --from-dir="$PROJECT_ROOT/services/$service" || true
+for component in "${SERVICES[@]}"; do
+  echo "Building $component"
+  oc get buildconfig "$component" -n "$NAMESPACE" >/dev/null
+  oc start-build "$component" -n "$NAMESPACE" \
+    --from-dir="$ROOT/services/$component" --follow --wait
 done
 
-echo "=== All builds triggered ==="
+echo "All OpenShift binary builds completed successfully."

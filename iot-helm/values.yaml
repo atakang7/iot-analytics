@@ -16,4 +16,5 @@ monitoring:
   enabled: true
 
 ci-cd:
-  enabled: true
+  # Legacy self-polling controller is not a CI/CD release gate.
+  enabled: false
