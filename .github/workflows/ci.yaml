@@ -179,6 +179,19 @@ jobs:
         run: |
           docker compose -f services/docker-compose.yml exec -T timescaledb \
             psql -U iot -d iot -v ON_ERROR_STOP=1 < scripts/verify-schema.sql
+      - name: Prove backup can be restored to another TimescaleDB database
+        run: |
+          set -euo pipefail
+          bash -n infra/db/bin/backup infra/db/bin/restore-check
+          docker compose -f services/docker-compose.yml exec -T timescaledb \
+            psql -U iot -d iot -v ON_ERROR_STOP=1 < infra/db/fixtures/recovery-seed.sql
+          dir="$(mktemp -d)"
+          trap 'rm -rf "$dir"' EXIT
+          bash infra/db/bin/backup "$dir/snapshot.dump"
+          bash infra/db/bin/restore-check "$dir/snapshot.dump"
+          original="$(docker compose -f services/docker-compose.yml exec -T timescaledb \
+            psql -U iot -d iot -Atc "SELECT count(*) FROM telemetry WHERE device_id='ci-recovery'" | tr -d '\r\n')"
+          test "$original" = 1
       - name: Database logs
         if: failure()
         run: docker compose -f services/docker-compose.yml logs timescaledb
