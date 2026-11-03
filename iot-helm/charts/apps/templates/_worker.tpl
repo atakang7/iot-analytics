@@ -23,8 +23,8 @@ spec:
           command: ['sh', '-c', 'until nc -z timescaledb 5432; do echo waiting for db; sleep 2; done']
       containers:
         - name: {{ $name }}
-          image: image-registry.openshift-image-registry.svc:5000/atakangul-dev/{{ $name }}:latest
-          imagePullPolicy: Always
+          image: {{ include "iot.image" (dict "name" $name "values" .root.Values) | quote }}
+          imagePullPolicy: {{ if eq .root.Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
           ports:
             - name: metrics
               containerPort: 8000
@@ -91,6 +91,7 @@ spec:
     - name: metrics
       port: 8000
       targetPort: metrics
+{{- if eq .root.Values.imageMode "lab" }}
 ---
 apiVersion: image.openshift.io/v1
 kind: ImageStream
@@ -119,4 +120,5 @@ spec:
     type: Docker
     dockerStrategy:
       dockerfilePath: {{ printf "%s/Dockerfile" $name | quote }}
+{{- end }}
 {{- end }}

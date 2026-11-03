@@ -48,3 +48,25 @@ Existing TimescaleDB volumes need a migration; Helm does not run
 
 For the tested local environment, use
 [Docker Compose](../README.md) and the [runbook](../RUNBOOK.md).
+
+## Release image boundary
+
+The default `apps.imageMode=lab` intentionally uses mutable OpenShift
+ImageStreams and BuildConfigs for experiments. **Never treat that as a release.**
+
+A reviewed release switches to `apps.imageMode=release` and passes the
+complete six-service GHCR image manifest to
+[`delivery/release.py`](../delivery/release.py). In release mode Helm
+renders **only digest-pinned application workloads**, omits all application
+BuildConfigs/ImageStreams, and fails if a service digest is missing.
+
+```bash
+python3 delivery/release.py validate path/to/release.json
+python3 delivery/release.py helm-values path/to/release.json --output /tmp/release-values.json
+helm template iot-analytics iot-helm -f /tmp/release-values.json > /tmp/release.yaml
+python3 scripts/verify-helm.py /tmp/release.yaml --release-manifest path/to/release.json
+```
+
+The committed `release.test.json` is **synthetic test input**, not published
+images. Helm rendering alone does not establish OCI signature, origin, live
+readiness, or deployability; those require a separate release pipeline.

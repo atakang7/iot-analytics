@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Validate rendered Helm manifests, not just template syntax."""
 import argparse
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'delivery'))
+from release import load_release
 
 import yaml
 
@@ -16,7 +20,7 @@ EXPECTED = {
 }
 
 
-def validate_manifests(manifests: list[dict], public_routes: bool = False):
+def validate_manifests(manifests: list[dict], public_routes: bool = False, release: dict | None = None):
     by_kind = {}
     for manifest in manifests:
         if not manifest:
@@ -26,6 +30,28 @@ def validate_manifests(manifests: list[dict], public_routes: bool = False):
         if key in by_kind:
             raise AssertionError(f"Duplicate resource {key}")
         by_kind[key] = manifest
+
+    app_names = ("ingestion", "device-registry", "telemetry-worker",
+                 "stream-worker", "alert-worker", "kpi-job")
+    if release is not None:
+        # Immutable releases must contain no in-cluster build pipeline and every
+        # workload must run the image that was actually scanned and published.
+        assert not any(kind in {"BuildConfig", "ImageStream"} for kind, _ in by_kind), (
+            "release mode must not mutate images inside the cluster"
+        )
+        for name in app_names:
+            if name == "kpi-job":
+                workload = by_kind[("CronJob", name)]
+                containers = workload["spec"]["jobTemplate"]["spec"]["template"]["spec"]["containers"]
+            else:
+                workload = by_kind[("Deployment", name)]
+                containers = workload["spec"]["template"]["spec"]["containers"]
+            assert len(containers) == 1
+            assert containers[0]["image"] == release["images"][name], name
+    else:
+        assert sum(kind == "BuildConfig" for kind, _ in by_kind) == len(app_names), (
+            "lab mode must define local binary BuildConfigs"
+        )
 
     # No dormant deployment agent with blanket access to cluster secrets.
     assert not any(name.startswith("gitops-") for _, name in by_kind)
@@ -66,10 +92,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("rendered", type=Path)
     parser.add_argument("--routes-enabled", action="store_true")
+    parser.add_argument("--release-manifest", type=Path)
     parser.add_argument("--export-prometheus-config", type=Path)
     args = parser.parse_args()
     docs = list(yaml.safe_load_all(args.rendered.read_text()))
-    validate_manifests(docs, public_routes=args.routes_enabled)
+    release = load_release(args.release_manifest) if args.release_manifest else None
+    validate_manifests(docs, public_routes=args.routes_enabled, release=release)
     if args.export_prometheus_config is not None:
         config = next(d for d in docs if d and d.get("kind") == "ConfigMap" and d["metadata"]["name"] == "prometheus-config")
         args.export_prometheus_config.write_text(config["data"]["prometheus.yml"])
