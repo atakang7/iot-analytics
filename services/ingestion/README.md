@@ -23,4 +23,4 @@ mvn -B -ntp -f services/ingestion/pom.xml verify
 
 ## Interfaces
 
-`POST /telemetry` listens on `8081`; `GET /telemetry/health` returns process status. The producer writes `iot.telemetry` with `deviceId` as the message key. Actuator listens on `9090`. See [API responses](../../docs/reference/api.md) and [event fields](../../docs/reference/events.md).
+`POST /telemetry` listens on `8081`; `GET /telemetry/health` returns process status. The producer writes the configured telemetry topic with `deviceId` as the message key. Actuator listens on `9090`. See [API responses](../../docs/reference/api.md) and [event fields](../../docs/reference/events.md).
