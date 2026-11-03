@@ -10,11 +10,11 @@ LINK = re.compile(r"!?\[[^\]\n]+\]\(([^)\n]+)\)")
 HEADINGS = re.compile(r"^#{1,3}\s+(.+)$", re.MULTILINE)
 CATEGORIES = ("tutorials", "how-to", "reference", "explanation")
 STYLE = re.compile(
-    r"\\b(?:delve|robust|seamless|leverage|comprehensive|powerful|crucial|vital|"
+    r"\b(?:delve|robust|seamless|leverage|comprehensive|powerful|crucial|vital|"
     r"pivotal|enhance|ensures?|showcase|highlight|underscore|valuable|streamline|"
     r"cutting-edge|production-grade|battle-tested|effortless|simply|designed to|"
     r"serves as|features|boasts|offers|additionally|furthermore|moreover|"
-    r"ultimately|tapestry|groundbreaking)\\b", re.I
+    r"ultimately|tapestry|groundbreaking)\b", re.I
 )
 
 
