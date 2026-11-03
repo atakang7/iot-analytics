@@ -59,6 +59,20 @@ docker compose -f services/docker-compose.yml --profile batch run --rm kpi-job
 5. **Poison event blocks a consumer:** inspect logs, preserve message content
    and offset, and repair the producer/input. Offsets are not committed on errors.
 
+## Protected backups and recovery rehearsal
+
+```bash
+bash infra/db/bin/backup /absolute/backup/dir/iot.dump
+# This check is for a backup containing the CI fixtures:
+bash infra/db/bin/restore-check /absolute/backup/dir/iot.dump
+```
+
+CI exercises the complete `pg_dump` → TimescaleDB restore cycle into a new
+temporary database, and asserts source data, hypertables and unique indexes.
+The live `iot` database is never overwritten. See
+[the recovery boundary](infra/db/README.md) for external backups and the
+separate production recovery procedure.
+
 ## Existing database upgrade
 
 `services/schema.sql` and the two Helm copies are **bootstrap definitions**
