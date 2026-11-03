@@ -5,7 +5,7 @@ from common.config import KAFKA_ALERTS_TOPIC, METRICS_PORT
 from common.db import upsert_one
 from common.kafka import KafkaConsumer
 from common.logger import get_logger
-from common.metrics import alerts_stored, processing_errors, push_metrics, start_metrics_server
+from common.metrics import alerts_stored, processing_errors, start_metrics_server
 
 log = get_logger("alert-worker")
 

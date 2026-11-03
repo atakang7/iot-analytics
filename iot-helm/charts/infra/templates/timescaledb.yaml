@@ -38,7 +38,7 @@ spec:
     spec:
       containers:
         - name: timescaledb
-          image: timescale/timescaledb:latest-pg15
+          image: timescale/timescaledb:2.28.3-pg15
           ports:
             - containerPort: 5432
           env:

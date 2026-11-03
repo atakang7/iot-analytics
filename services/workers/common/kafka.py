@@ -46,6 +46,8 @@ class KafkaProducer:
             bootstrap_servers=KAFKA_BOOTSTRAP,
             acks="all",
             retries=5,
+            max_block_ms=15000,
+            request_timeout_ms=10000,
             value_serializer=lambda value: json.dumps(value, allow_nan=False).encode("utf-8"),
             key_serializer=lambda key: key.encode("utf-8") if key else None,
         )
