@@ -1,29 +1,17 @@
 # Architecture
 
-The ingestion API and registry serve different identities. Registry records have internal UUIDs; telemetry identifies a source with a caller-supplied `deviceId`. Ingestion does not resolve this ID against the registry.
+Telemetry uses a caller-supplied `deviceId`. The registry creates its own UUID for device metadata. The ingestion API accepts readings without a registry lookup, so a registration cannot establish source ownership.
 
-```text
-+--------+   HTTP   +-----------+  Kafka   +------------------+  SQL   +-----------+
-| client | -------> | ingestion | -------> | telemetry-worker | -----> | telemetry |
-+--------+          +-----------+          +------------------+        +-----------+
-                                           
-                 +---------------+  Kafka   +--------------+   SQL   +--------+
-telemetry Kafka >| stream-worker | -------> | alert-worker | ------> | alerts |
-                 +---------------+          +--------------+         +--------+
-                 
-+-----------+  closed window   +---------+  SQL   +------+
-| telemetry | ----------------> | kpi-job | -----> | kpis |
-+-----------+                   +---------+        +------+
-```
+Kafka separates HTTP acceptance from storage and alert evaluation. Ingestion returns `202` after a broker acknowledgment; the telemetry and stream workers act on the record independently.
 
-The ingestion API returns `202` after the broker acknowledges a publish. The telemetry worker persists the record independently. The stream worker checks thresholds and sends alert events to a second topic. An alert worker stores each alert by deterministic identity. The batch job reads a completed five-minute interval and updates KPI rows and the watermark in one database transaction.
+The telemetry worker stores each reading by source, sensor and timestamp. The stream worker queries thresholds at startup, evaluates readings and publishes alert events. The alert worker stores alerts by deterministic ID. A separate KPI job advances a completed five-minute window together with its SQL writes.
 
-Python consumers commit source offsets after a durable database operation or downstream Kafka acknowledgment. Consumers can replay a successful side effect after a crash. Unique record identities limit duplication; they do not provide exactly-once execution.
+Workers commit Kafka offsets after the associated SQL transaction or downstream publish acknowledgment. This permits replay after a crash; SQL uniqueness prevents duplicate stored identities. Recent rate and stuck-sensor histories remain in process memory.
 
-## Deployment surfaces
+## Deployment boundaries
 
-Docker Compose is the local integration environment. The portable application Helm subchart is exercised against disposable Kind clusters; the parent chart also contains OpenShift ImageStreams, BuildConfigs and Routes. CI does not deploy the OpenShift parent chart to a real OpenShift cluster.
+[Compose](../../services/README.md) runs the local stack. [Kind](../../infra/kind/README.md) tests the portable [apps chart](../../iot-helm/charts/apps/README.md). The [parent chart](../../iot-helm/README.md) includes OpenShift BuildConfigs and stateful dependencies. CI does not install it on a live OpenShift cluster.
 
-The observability test installs Prometheus, Alertmanager, Loki and Grafana in a separate private namespace and checks actual scrapes and log arrivals. These backends use temporary storage in the runner.
+The separate [observability stack](../../platform/observability/README.md) uses disposable Prometheus, Loki, Grafana and Alertmanager instances.
 
-See [delivery behavior](consistency.md) and [production limitations](production-boundaries.md).
+See [delivery behavior](consistency.md) and [production limits](production-boundaries.md).

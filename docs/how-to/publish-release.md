@@ -35,4 +35,4 @@ python3 delivery/state.py verify --history-ref origin/main
 
 Promote stage to prod the same way, in a later reviewed change. CI rejects a promotion if the release never appeared in the predecessor's history.
 
-This repository's GitHub runners do not perform live OpenShift deployment. Use [the OpenShift checks](../OPENSHIFT.md) for lab prerequisites and secure operator review.
+This repository's GitHub runners do not perform live OpenShift deployment. Use [the OpenShift checks](openshift-lab.md) for lab prerequisites and secure operator review.

@@ -1,33 +1,30 @@
-# Ephemeral Kubernetes runtime
+Part of [iot-analytics](../../README.md).
 
-This is the **real cluster integration layer** for IoT Analytics, mirroring
-the golden platform's distinction between infrastructure and validation.
-It provisions an isolated, single-node kind cluster (pinned Kubernetes node
-image), puts Kafka and TimescaleDB in `iot-dependencies`, loads six application
-images into a separate `iot-validation` namespace, and
-deploys the **portable application-only Helm chart**.
+# kind
+
+Disposable Kubernetes runtime for all six application images and local dependencies.
+
+## Run
 
 ```bash
-bash infra/kind/bin/up
-bash validation/kind/e2e.sh
-bash infra/kind/bin/down
+make kind-up
+make kind-smoke
+make kind-down
 ```
 
-`up` refuses an existing cluster with the same name. Scripts check the
-expected `kind-iot-analytics` context before operating. `down` deletes
-only the named disposable cluster. The database uses `emptyDir`: destroying
-the Pod or cluster **destroys its data**. Generated secrets exist only in the
-ephemeral namespace, never in Git. No OpenShift CRDs, registry credentials,
-public ingress or production cluster access are required.
+## Test
 
-`apps.imageMode=kind` is test-only and uses `iot/*:kind` images with
-`imagePullPolicy=Never`; it is **never** a deployable/promotable release.
-Real release mode still requires signed GHCR image digests and omits the
-in-cluster BuildConfigs. Dependencies here are disposable test infrastructure,
-not HA/secure production dependencies.
+```bash
+bash -n infra/kind/bin/up infra/kind/bin/down
+```
 
-The application namespace is labeled `iot-policy=enforce` and all Pods
-must pass [the native admission policy](../../policies/README.md). The CI
-cluster uses Kubernetes API **server-side** allow/deny smoke tests before
-it deploys the workloads. Stateful dependencies remain isolated because they
-require a distinct filesystem/process security profile.
+## Config
+
+| Var | Default | What |
+| --- | --- | --- |
+| `IOT_KIND_CLUSTER` | `iot-analytics` | New Kind cluster name |
+| `IOT_KIND_NAMESPACE` | `iot-validation` | Application namespace |
+
+## Interfaces
+
+`bin/up` creates application and dependency namespaces, loads local `iot/*:kind` images, and installs the [apps chart](../../iot-helm/charts/apps/README.md). Dependency storage is ephemeral. `bin/down` removes only the named Kind cluster. See [Kubernetes validation](../../docs/how-to/test-kubernetes.md).

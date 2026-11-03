@@ -1,17 +1,40 @@
-# Analytics workers
+Part of [iot-analytics](../../README.md).
 
-`common/models.py` defines the Python telemetry and alert objects. `common/kafka.py` configures the producer and consumers; `common/db.py` owns SQL connections and transactions.
+# workers
 
-`telemetry-worker` writes deduplicated samples. `stream-worker` checks configured thresholds and publishes alerts. `alert-worker` upserts alerts. `kpi-job` processes one closed five-minute window and commits its watermark with the KPI rows.
+Four Python entry points share event, transport and database code.
 
-Source offsets commit after the relevant write or publish acknowledgment. Invalid messages currently block their partition. Stream rate and stuck-sensor history resets on restart.
+## Run
 
-Run each worker test suite:
+```bash
+docker compose -f services/docker-compose.yml up -d --build telemetry-worker stream-worker alert-worker
+make kpi
+```
 
-~~~bash
+## Test
+
+```bash
 (cd services/workers && for worker in telemetry-worker stream-worker alert-worker kpi-job; do
   (cd "$worker" && PYTHONPATH=.. python -m pytest -q) || exit 1
 done)
-~~~
+```
 
-See [replay semantics](../../docs/explanation/consistency.md), [data model](../../docs/reference/data-model.md) and [configuration](../../docs/reference/configuration.md).
+## Config
+
+| Var | Default | What |
+| --- | --- | --- |
+| `KAFKA_BOOTSTRAP` | `localhost:9092` | Broker address |
+| `DB_PASSWORD` | Required for SQL | Database credential |
+| `METRICS_PORT` | `8000` | Worker metrics listener |
+
+## Interfaces
+
+| Component | Input and output |
+| --- | --- |
+| [telemetry-worker](telemetry-worker/README.md) | Kafka telemetry to SQL |
+| [stream-worker](stream-worker/README.md) | Kafka telemetry to Kafka alerts |
+| [alert-worker](alert-worker/README.md) | Kafka alerts to SQL |
+| [kpi-job](kpi-job/README.md) | SQL telemetry to window KPIs |
+| [common](common/README.md) | Event models and adapters |
+
+See [replay behavior](../../docs/explanation/consistency.md).
