@@ -1,0 +1,98 @@
+name: Publish immutable OCI release
+
+on:
+  workflow_dispatch:
+
+# No writes on PRs. Dispatching outside main is rejected by the first job.
+permissions:
+  contents: read
+concurrency:
+  group: publish-main
+  cancel-in-progress: false
+
+jobs:
+  verify-source:
+    name: Require green main CI
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check source revision and prior verification
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          count="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$GITHUB_SHA&event=push&per_page=100" \
+            --jq '[.workflow_runs[] | select(.name == "Verify" and .conclusion == "success")] | length')"
+          test "$count" -ge 1
+
+  publish:
+    name: Scan, publish and sign ${{ matrix.service }}
+    needs: verify-source
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - ingestion
+          - device-registry
+          - telemetry-worker
+          - stream-worker
+          - alert-worker
+          - kpi-job
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: aquasecurity/setup-trivy@v0.2.0
+        with:
+          version: v0.74.0
+      - uses: sigstore/cosign-installer@v4.1.2
+      - name: Install exact-copy transport
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
+      - name: Scan OCI, preserve digest at GHCR, sign and verify
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USER: ${{ github.actor }}
+        run: bash delivery/bin/publish-image "${{ matrix.service }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: published-${{ matrix.service }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/iot-publish/${{ matrix.service }}.identity.json
+            ${{ runner.temp }}/iot-publish/${{ matrix.service }}.sbom.json
+
+  assemble:
+    name: Verify complete six-image release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: published-*
+          path: published
+          merge-multiple: true
+      - name: Validate and assemble release artifact
+        run: |
+          python3 delivery/assemble.py --identity-dir published --output release.json
+          python3 delivery/release.py validate release.json
+          python3 delivery/release.py helm-values release.json --output release-values.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: immutable-release
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            release.json
+            release-values.json
