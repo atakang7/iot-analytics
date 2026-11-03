@@ -43,5 +43,5 @@ the scripts and release-contract code, but **publishing has not been run
 against GHCR** and **live OpenShift deployment is not verified**.
 
 Do not manually substitute synthetic test fixture digests. Never store secrets
-in a release manifest. Environment promotion and cluster operator verification
-are separate responsibilities.
+in a release manifest. Environment state/promotion is implemented by [state.py](state.py) and
+[state/](../state/). Live cluster verification remains operator-owned.

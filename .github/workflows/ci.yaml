@@ -112,6 +112,20 @@ jobs:
           python3 scripts/verify-helm.py /tmp/iot-immutable-release.yaml \
             --release-manifest delivery/fixtures/release.test.json
 
+  release-state:
+    name: Git state and promotion history policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate release state and history
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s delivery -p 'test_*.py' -v
+          python3 delivery/state.py verify --history-ref origin/main
+
   database:
     name: TimescaleDB initialization and replay invariants
     runs-on: ubuntu-latest

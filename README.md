@@ -86,6 +86,20 @@ curl -i http://127.0.0.1:8081/telemetry \
 `202` means Kafka accepted the event, **not** that downstream storage/analytics
 has completed. See [event semantics](docs/ARCHITECTURE.md).
 
+## Immutable release and promotion
+
+The [delivery workflow](delivery/README.md) implements build-once OCI
+publication with a critical-vulnerability gate, CycloneDX SBOMs and keyless
+Cosign signatures. Deployments require a six-service digest manifest; the
+OpenShift chart rejects mutable release tags and removes in-cluster BuildConfigs
+in release mode.
+
+[Environment state](state/README.md) is versioned in Git:
+`dev -> stage -> prod`. Promotion preserves the original six digests and CI
+checks that each promoted release appeared in the preceding environment's
+**Git history**. All states initially contain `null` because publication and
+cluster deployments have not yet occurred. No live deployment is implied.
+
 ## Verification and operating limits
 
 Pull requests run Python tests, Java tests, **six image builds**, Helm lint and
