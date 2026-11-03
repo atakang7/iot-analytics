@@ -26,7 +26,7 @@ jobs:
           version: v0.74.0
           cache: false
       - name: Scan repo secrets
-        run: trivy fs --scanners secret --exit-code 1 --quiet .
+        run: trivy repo --scanners secret --offline-scan --exit-code 1 --quiet .
 
   python:
     name: Python syntax and unit tests
