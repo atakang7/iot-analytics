@@ -27,6 +27,9 @@ def validate_manifests(manifests: list[dict], public_routes: bool = False):
             raise AssertionError(f"Duplicate resource {key}")
         by_kind[key] = manifest
 
+    # No dormant deployment agent with blanket access to cluster secrets.
+    assert not any(name.startswith("gitops-") for _, name in by_kind)
+
     configmap = by_kind[("ConfigMap", "prometheus-config")]
     prometheus = yaml.safe_load(configmap["data"]["prometheus.yml"])
     targets = {

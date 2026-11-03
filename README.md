@@ -11,6 +11,7 @@ and an **optional OpenShift deployment experiment**.
 | --- | --- |
 | [services/](services/README.md) | Java APIs, Python workers, database schema, local Compose |
 | [scripts/](scripts/) | Simulator and reproducible smoke checks |
+| [system-test/](system-test/README.md) | Bounded, measured HTTP load testing |
 | [iot-helm/](iot-helm/README.md) | OpenShift-oriented chart (not a vanilla Kubernetes chart) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Event contract, delivery and consistency model |
 | [RUNBOOK.md](RUNBOOK.md) | Start, verify, investigate, recover, shut down |

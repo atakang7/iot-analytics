@@ -1,20 +1,8 @@
-# iot-analytics/values.yaml
-# Global values inherited by all subcharts
-
-global:
-  namespace: atakangul-dev
-  imageRegistry: image-registry.openshift-image-registry.svc:5000/atakangul-dev
-
-# Enable/disable subcharts
+# Components included in the OpenShift lab chart.
+# Image registries, secret names and storage classes are currently lab-specific.
 infra:
   enabled: true
-
 apps:
   enabled: true
-
 monitoring:
   enabled: true
-
-ci-cd:
-  # Legacy self-polling controller is not a CI/CD release gate.
-  enabled: false

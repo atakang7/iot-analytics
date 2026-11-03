@@ -4,12 +4,11 @@ This chart is **OpenShift-specific**. It contains ImageStreams,
 BuildConfigs and Routes alongside ordinary Kubernetes resources. It is not
 supported as a vanilla Kubernetes Helm install.
 
-Subcharts:
+Three independently scoped subcharts:
 
 - `infra`: single-instance TimescaleDB, Kafka and Loki.
 - `apps`: Spring REST services and Python consumers.
 - `monitoring`: Prometheus, Grafana, logs.
-- `ci-cd`: experimental self-polling GitOps controller, **disabled by default**.
 
 ```bash
 helm dependency build iot-helm
@@ -34,11 +33,15 @@ a laboratory namespace, image registry, storage class, and an external
 `iot-central-secret`; configure all dependencies deliberately before
 deployment.
 
-The CD controller is legacy and not connected to the current GitHub Actions
-verification workflow. It is opt-in, not a trustworthy promotion mechanism:
-do not enable `ci-cd.enabled` for production or treat a green CI run as a
-deployed release. BuildImages for workers must use `services/workers` as
-Docker context because they depend on the shared `common/` package.
+The legacy self-polling GitOps controller and its broad cluster privileges
+have been removed. There is **no automated OpenShift deployment/promotion**:
+a green GitHub Actions run is a verification result, not a deployed release.
+BuildConfigs for workers must use `services/workers` as Docker context
+because they depend on the shared `common/` package.
+
+`values-dev.yaml` sets only supported lab values. There is deliberately no
+`values-prod.yaml`: this chart requires a reviewed production architecture
+for persistence, authentication, encryption, availability, and migrations.
 
 Existing TimescaleDB volumes need a migration; Helm does not run
 `schema.sql` as an upgrade migration.
