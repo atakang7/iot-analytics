@@ -1,86 +1,15 @@
-# OpenShift deployment laboratory
+# Helm charts
 
-This chart is **OpenShift-specific**. It contains ImageStreams,
-BuildConfigs and Routes alongside ordinary Kubernetes resources. It is not
-supported as a vanilla Kubernetes Helm install.
+The parent `iot-helm` chart targets an OpenShift lab. It includes an `infra` chart for Kafka, TimescaleDB and Loki; `apps` for application workloads; and `monitoring` for metrics and dashboards. Its ImageStreams, BuildConfigs and Routes require OpenShift.
 
-Three independently scoped subcharts:
+Three app image modes are defined: `lab` uses OpenShift binary builds; `kind` uses locally loaded test images; `release` requires the full set of six immutable image digests. The portable `apps` chart is tested in Kind without the parent chart.
 
-- `infra`: single-instance TimescaleDB, Kafka and Loki.
-- `apps`: Spring REST services and Python consumers.
-- `monitoring`: Prometheus, Grafana, logs.
-
-```bash
+~~~bash
 helm dependency build iot-helm
 helm lint iot-helm -f iot-helm/values-dev.yaml
 helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml
-```
+~~~
 
-CI validates chart syntax and verifies that Prometheus scrapes exactly the two
-Spring Boot management endpoints (port 9090) and the three worker metrics
-Services (port 8000). An offline rendered-manifest validator checks metrics
-Services, non-root worker settings and private-by-default Routes.
+APIs and Grafana have private Routes by default; Prometheus has no public Route. Existing database volumes need a separate SQL migration.
 
-APIs and Grafana have **no public OpenShift Routes by default**. If access is
-needed in a trusted lab, set `apps.routes.enabled=true` and
-`monitoring.routes.grafana=true`; add authentication and ingress policy
-before using these options in an untrusted environment. Prometheus never
-receives a public Route; use `oc port-forward svc/prometheus 9090:9090`.
-
-CI performs syntax and configuration validation only. These checks **do not**
-prove that the manifests work in an OpenShift cluster. The chart references
-a laboratory namespace, image registry, storage class, and an external
-`iot-central-secret`; configure all dependencies deliberately before
-deployment.
-
-The legacy self-polling GitOps controller and its broad cluster privileges
-have been removed. There is **no automated OpenShift deployment/promotion**:
-a green GitHub Actions run is a verification result, not a deployed release.
-BuildConfigs for workers must use `services/workers` as Docker context
-because they depend on the shared `common/` package.
-
-`values-dev.yaml` sets only supported lab values. There is deliberately no
-`values-prod.yaml`: this chart requires a reviewed production architecture
-for persistence, authentication, encryption, availability, and migrations.
-
-Existing TimescaleDB volumes need a migration; Helm does not run
-`schema.sql` as an upgrade migration.
-
-For the tested local environment, use
-[Docker Compose](../README.md) and the [runbook](../RUNBOOK.md).
-
-## Release image boundary
-
-The default `apps.imageMode=lab` intentionally uses mutable OpenShift
-ImageStreams and BuildConfigs for experiments. **Never treat that as a release.**
-
-A reviewed release switches to `apps.imageMode=release` and passes the
-complete six-service GHCR image manifest to
-[`delivery/release.py`](../delivery/release.py). In release mode Helm
-renders **only digest-pinned application workloads**, omits all application
-BuildConfigs/ImageStreams, and fails if a service digest is missing.
-
-```bash
-python3 delivery/release.py validate path/to/release.json
-python3 delivery/release.py helm-values path/to/release.json --output /tmp/release-values.json
-helm template iot-analytics iot-helm -f /tmp/release-values.json > /tmp/release.yaml
-python3 scripts/verify-helm.py /tmp/release.yaml --release-manifest path/to/release.json
-```
-
-The committed `release.test.json` is **synthetic test input**, not published
-images. Helm rendering alone does not establish OCI signature, origin, live
-readiness, or deployability; those require a separate release pipeline.
-
-## Real Kubernetes runtime validation
-
-In addition to OpenShift rendering, the portable `apps` subchart is tested
-inside a **real kind Kubernetes cluster** on GitHub runners. The test-only
-`apps.imageMode=kind` uses runner-built, locally loaded `iot/*:kind` images
-and no OpenShift BuildConfigs/ImageStreams. It deploys only the apps; the
-disposable Kafka and TimescaleDB dependencies are in
-[`infra/kind/`](../infra/kind/README.md). The runtime E2E validator traces
-the real HTTP/Service/Kafka/TimescaleDB/alert/KPI path.
-
-The Spring API Services explicitly expose management port 9090 to internal
-Prometheus scraping; the older chart only exposed the HTTP port, so a
-syntactically valid scrape target could never actually succeed.
+See [Helm values and modes](../docs/reference/helm.md), [Kind validation](../docs/how-to/test-kubernetes.md), [OpenShift lab checks](../docs/how-to/openshift-lab.md) and [immutable release steps](../docs/how-to/publish-release.md).
