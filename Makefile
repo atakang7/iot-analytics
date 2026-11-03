@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 COMPOSE := docker compose -f services/docker-compose.yml
 
-.PHONY: help up down ps logs smoke api-smoke kpi kind-up kind-smoke kind-down
+.PHONY: help up down ps logs smoke api-smoke kpi kind-up kind-smoke kind-down backup
 
 help:
 	@printf '%s\n' 'up          Build and start the local stack' \
@@ -46,3 +46,7 @@ kind-smoke:
 
 kind-down:
 	bash infra/kind/bin/down
+
+backup:
+	@test -n "$(DEST)" || (echo "Set DEST=/absolute/path/outside/repo.dump" >&2; exit 2)
+	bash infra/db/bin/backup "$(DEST)"
