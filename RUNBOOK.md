@@ -7,7 +7,7 @@ Commands below assume the repository root, Docker Compose v2 and Bash.
 ```bash
 cp services/.env.example services/.env
 # This is for a fresh environment only; keep the old value on restarts.
-printf 'IOT_DB_PASSWORD=%s\\n' "$(openssl rand -hex 32)" > services/.env
+printf 'IOT_DB_PASSWORD=%s\n' "$(openssl rand -hex 32)" > services/.env
 chmod 600 services/.env
 
 docker compose -f services/docker-compose.yml up -d --build
