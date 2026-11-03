@@ -90,6 +90,7 @@ jobs:
           version: v3.16.4
       - name: Validate chart and both deployment modes
         run: |
+          bash -n delivery/bin/publish-image
           python3 -m unittest discover -s delivery -p 'test_*.py' -v
           python3 delivery/release.py validate delivery/fixtures/release.test.json
           python3 delivery/release.py helm-values delivery/fixtures/release.test.json --output /tmp/iot-release-values.json
