@@ -1,49 +1,90 @@
-name: CI
+name: Verify
 
 on:
-  push:
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
-  statuses: write
 
 jobs:
-  detect:
-    uses: ./.github/workflows/detect-changes.yaml
+  python:
+    name: Python syntax and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install pytest==8.3.4 kafka-python==2.0.2 psycopg2-binary==2.9.9 prometheus-client==0.19.0 ruff==0.8.6
+      - name: Compile and check correctness
+        run: |
+          python -m compileall -q services/workers
+          ruff check --select E4,E7,E9,F63,F7,F82 services/workers
+      - name: Test every worker
+        env:
+          DB_PASSWORD: ci-test-placeholder
+        run: |
+          set -euo pipefail
+          for worker in telemetry-worker stream-worker alert-worker kpi-job; do
+            echo "::group::${worker} tests"
+            (cd "services/workers/${worker}" && PYTHONPATH=.. python -m pytest -q)
+            echo "::endgroup::"
+          done
 
   java:
-    needs: detect
-    if: needs.detect.outputs.java_changed == 'true'
-    uses: ./.github/workflows/java-ci.yaml
-    with:
-      services: ${{ needs.detect.outputs.java_services }}
-
-  python:
-    needs: detect
-    if: needs.detect.outputs.python_changed == 'true'
-    uses: ./.github/workflows/python-ci.yaml
-    with:
-      workers: ${{ needs.detect.outputs.python_workers }}
-
-  handoff-to-cd:
-    needs: [detect, java, python]
-    # Only handoff if there are deployable components AND no failures
-    if: |
-      always() && 
-      !contains(needs.*.result, 'failure') &&
-      (needs.detect.outputs.java_changed == 'true' || needs.detect.outputs.python_changed == 'true')
+    name: Java build and tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Set pending deploy status
-        uses: actions/github-script@v7
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          script: |
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state: 'pending',
-              context: 'deploy/cd',
-              description: 'Waiting for CD controller...'
-            });
+          distribution: temurin
+          java-version: '17'
+      - name: Verify both services
+        run: |
+          set -euo pipefail
+          for service in ingestion device-registry; do
+            mvn -B -ntp -f "services/${service}/pom.xml" verify
+          done
+
+  containers:
+    name: Container build and Compose validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose
+        env:
+          IOT_DB_PASSWORD: ci-test-placeholder
+        run: docker compose -f services/docker-compose.yml config -q
+      - name: Build all service images
+        run: |
+          set -euo pipefail
+          for service in ingestion device-registry; do
+            docker build -t "iot/${service}:ci" "services/${service}"
+          done
+          for worker in telemetry-worker stream-worker alert-worker kpi-job; do
+            docker build -t "iot/${worker}:ci" -f "services/workers/${worker}/Dockerfile" services/workers
+          done
+
+  helm:
+    name: Helm chart validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4.3.0
+        with:
+          version: v3.16.4
+      - name: Validate chart
+        run: |
+          helm dependency build iot-helm
+          helm lint iot-helm -f iot-helm/values-dev.yaml
+          helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml > /tmp/iot-rendered.yaml
+          test -s /tmp/iot-rendered.yaml
