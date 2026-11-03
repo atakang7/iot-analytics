@@ -30,19 +30,17 @@ fi
 output="$RUNNER_TEMP/iot-publish"
 mkdir -p "$output"
 archive="$output/$service.oci.tar"
-layout="$output/$service-layout"
-mkdir -p "$layout"
 
 # The detached OCI archive is the only artifact that can be published.
 docker buildx build --platform linux/amd64 --provenance=false --sbom=false \
   --label "org.opencontainers.image.revision=$GITHUB_SHA" \
   --file "$dockerfile" --output "type=oci,dest=$archive" "$context"
-tar -xf "$archive" -C "$layout"
+test -s "$archive"
 
 # Security check and SBOM both inspect the artifact BEFORE publication.
-trivy image --input "$layout" --scanners vuln \
+trivy image --input "$archive" --scanners vuln \
   --severity CRITICAL --exit-code 1
-trivy image --input "$layout" --format cyclonedx \
+trivy image --input "$archive" --format cyclonedx \
   --output "$output/$service.sbom.json"
 
 image="ghcr.io/${GITHUB_REPOSITORY,,}/$service"
