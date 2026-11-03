@@ -94,6 +94,23 @@ docker compose -f services/docker-compose.yml down
 This preserves the database volume. **Do not use `down -v` unless you intend
 to permanently erase your local data.**
 
+## Signed application release (no automatic cluster access)
+
+After a real GHCR publish, merge the matching six image digests into
+`state/dev.json` via PR. The operator can generate a read-only plan:
+
+```bash
+python3 delivery/rollout.py --environment dev --namespace iot-dev \
+  --context my-cluster --repository atakang7/iot-analytics
+```
+
+For a real deployment use `--apply --confirm
+'dev:iot-dev@my-cluster'` only after labeling the dedicated namespace
+`iot-release-allowed=true`. All six signatures are checked, manifests
+server-dry-run against the actual API, and Helm rolls back failures.
+This flow has no standing CI cluster credentials. See [DELIVERY.md](DELIVERY.md)
+for preconditions and untested live OpenShift boundaries.
+
 ## Deployment
 
 This repository's Helm chart is **OpenShift-specific**. GitHub Actions
