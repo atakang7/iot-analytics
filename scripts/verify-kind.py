@@ -21,6 +21,15 @@ def validate(docs):
         assert container["image"] == f"iot/{name}:kind", name
         assert container["imagePullPolicy"] == "Never", name
         assert container["name"] == name
+        template = (workload["spec"]["jobTemplate"]["spec"]["template"]
+                    if kind == "CronJob" else workload["spec"]["template"])
+        assert template["metadata"]["labels"]["app.kubernetes.io/part-of"] == "iot-analytics"
+        assert pod["securityContext"]["seccompProfile"]["type"] == "RuntimeDefault"
+        for c in pod.get("initContainers", []) + pod["containers"]:
+            assert c["securityContext"]["runAsNonRoot"] is True
+            assert c["securityContext"]["allowPrivilegeEscalation"] is False
+            assert c["securityContext"]["readOnlyRootFilesystem"] is True
+            assert "ALL" in c["securityContext"]["capabilities"]["drop"]
     for name in ("ingestion", "device-registry"):
         ports = {p["name"]: p for p in objects[("Service", name)]["spec"]["ports"]}
         assert ports["metrics"]["port"] == 9090

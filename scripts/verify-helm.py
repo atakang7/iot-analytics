@@ -53,6 +53,29 @@ def validate_manifests(manifests: list[dict], public_routes: bool = False, relea
             "lab mode must define local binary BuildConfigs"
         )
 
+    # The rendered Pods must satisfy our fail-closed admission policy.
+    for name in app_names:
+        kind = "CronJob" if name == "kpi-job" else "Deployment"
+        workload = by_kind[(kind, name)]
+        template = (workload["spec"]["jobTemplate"]["spec"]["template"]
+                    if kind == "CronJob" else workload["spec"]["template"])
+        pod = template["spec"]
+        assert template["metadata"]["labels"]["app.kubernetes.io/part-of"] == "iot-analytics", name
+        assert pod["securityContext"]["seccompProfile"]["type"] == "RuntimeDefault", name
+        for container in pod.get("initContainers", []) + pod["containers"]:
+            controls = container["securityContext"]
+            assert controls["runAsNonRoot"] is True, name
+            assert controls["runAsUser"] == 10001, name
+            assert controls["allowPrivilegeEscalation"] is False, name
+            assert controls["readOnlyRootFilesystem"] is True, name
+            assert "ALL" in controls["capabilities"]["drop"], name
+            for bound in ("requests", "limits"):
+                assert set(container["resources"][bound]) >= {"cpu", "memory"}, name
+        if name in ("ingestion", "device-registry"):
+            app = pod["containers"][0]
+            assert any(m["mountPath"] == "/tmp" for m in app["volumeMounts"]), name
+            assert any(v["name"] == "runtime-tmp" for v in pod["volumes"]), name
+
     # No dormant deployment agent with blanket access to cluster secrets.
     assert not any(name.startswith("gitops-") for _, name in by_kind)
 

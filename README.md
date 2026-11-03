@@ -100,6 +100,13 @@ checks that each promoted release appeared in the preceding environment's
 **Git history**. All states initially contain `null` because publication and
 cluster deployments have not yet occurred. No live deployment is implied.
 
+## Kubernetes admission security
+
+[Native admission policies](policies/README.md) are enforced by the Kubernetes
+API server—not just checked by YAML linting. The runner proves compliant Pods
+are accepted and noncompliant Pods denied, with stateful dependencies separated
+into their own namespace. Production OpenShift deployment is still opt-in.
+
 ## Kubernetes runtime proof
 
 `make kind-up` provisions a disposable Kubernetes cluster and the six
