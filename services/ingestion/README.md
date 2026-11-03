@@ -19,6 +19,7 @@ mvn -B -ntp -f services/ingestion/pom.xml verify
 | Var | Default | What |
 | --- | --- | --- |
 | `KAFKA_BOOTSTRAP` | `localhost:9092` | Broker address |
+| `KAFKA_TELEMETRY_TOPIC` | `iot.telemetry` | Output topic |
 
 ## Interfaces
 
