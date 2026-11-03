@@ -2,7 +2,7 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 COMPOSE := docker compose -f services/docker-compose.yml
 
-.PHONY: help up down ps logs smoke api-smoke kpi kind-up kind-smoke kind-down observability-up observability-smoke backup
+.PHONY: help up down ps logs smoke api-smoke kpi kind-up kind-smoke kind-down observability-up observability-smoke backup foundation-up foundation-validate foundation-down
 
 help:
 	@printf '%s\n' 'up          Build and start the local stack' \
@@ -56,3 +56,12 @@ observability-smoke:
 backup:
 	@test -n "$(DEST)" || (echo "Set DEST=/absolute/path/outside/repo.dump" >&2; exit 2)
 	bash infra/db/bin/backup "$(DEST)"
+
+foundation-up:
+	bash infra/cluster/bin/up
+
+foundation-validate:
+	bash validation/cluster/validate.sh
+
+foundation-down:
+	bash infra/cluster/bin/down

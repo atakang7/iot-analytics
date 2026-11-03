@@ -29,3 +29,8 @@ The Kubernetes runner also deploys an isolated monitoring stack
 (Prometheus, Alertmanager, Loki, Grafana, namespace-scoped log forwarder)
 and validates five live scrapes, two alert rules, data sources and actual
 worker log delivery to Loki.
+
+A separate foundation runner creates a disposable three-node Kind cluster
+(1 control plane + 2 workers) and proves DNS, cross-node Service traffic,
+PVC data persistence across Pod replacement, and native admission decisions.
+This check is independent of application integration tests.

@@ -100,6 +100,15 @@ checks that each promoted release appeared in the preceding environment's
 **Git history**. All states initially contain `null` because publication and
 cluster deployments have not yet occurred. No live deployment is implied.
 
+## Three-node Kubernetes foundation
+
+An independent [infrastructure lab](infra/cluster/README.md) now provisions
+one control-plane node and two worker nodes from Git. A GitHub runner proves
+cross-node networking and DNS, persistent volume recovery after Pod
+replacement, and Kubernetes admission allow/deny decisions before tearing
+down the isolated cluster. This is deliberately separate from application
+and monitoring workloads.
+
 ## Kubernetes admission security
 
 [Native admission policies](policies/README.md) are enforced by the Kubernetes
