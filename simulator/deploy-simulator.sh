@@ -17,14 +17,10 @@ echo "Interval: ${INTERVAL}s"
 echo ""
 
 # Create script ConfigMap (once)
-if ! oc get cm simulator-script -n "$NS" &>/dev/null; then
-  echo "[1/2] Creating script ConfigMap..."
-  oc create configmap simulator-script \
-    --from-file=simulator.sh="$SCRIPT_DIR/simulator.sh" \
-    -n "$NS"
-else
-  echo "[1/2] Script ConfigMap exists"
-fi
+echo "[1/2] Reconciling simulator script ConfigMap..."
+oc create configmap simulator-script \
+  --from-file=simulator.sh="$SCRIPT_DIR/simulator.sh" \
+  -n "$NS" --dry-run=client -o yaml | oc apply -n "$NS" -f -
 
 # Create deployment
 echo "[2/2] Creating deployment..."
@@ -78,7 +74,9 @@ spec:
             defaultMode: 0755
 EOF
 
-oc rollout status deployment/sim-${DEVICE_ID} -n "$NS" --timeout=60s
+# Refresh the running pod when its ConfigMap script changes.
+oc rollout restart deployment/sim-${DEVICE_ID} -n "$NS"
+oc rollout status deployment/sim-${DEVICE_ID} -n "$NS" --timeout=120s
 
 echo ""
 echo "=== Done ==="
