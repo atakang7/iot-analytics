@@ -1,8 +1,11 @@
 import tempfile
 import unittest
 from pathlib import Path
+import runpy
 
-from verify_docs import check_links, check_style
+_checks = runpy.run_path(str(Path(__file__).with_name('verify-docs.py')))
+check_links = _checks['check_links']
+check_style = _checks['check_style']
 
 
 class DocumentationChecks(unittest.TestCase):
