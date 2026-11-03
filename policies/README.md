@@ -1,24 +1,31 @@
-# Enforced Kubernetes security boundary
+Part of [iot-analytics](../README.md).
 
-Native Kubernetes `ValidatingAdmissionPolicy` and `Binding` enforce, for
-**every container and init container** in an opted-in namespace:
+# policies
 
-- CPU and memory requests and limits
-- non-root UID, no privilege escalation
-- read-only root filesystem and all capabilities dropped
+Native Kubernetes admission checks for application Pod resources and process security.
 
-`failurePolicy: Fail` and `validationActions: [Deny]` make this an actual
-API admission rule, not a linter. Its binding is **namespace-scoped**:
-`iot-policy=enforce`. A developer cannot bypass the rule by removing a Pod
-label. No bespoke webhook, privileged controller, or secrets are required.
+## Run
 
-The runner creates distinct `iot-dependencies` (Kafka/TimescaleDB) and
-`iot-validation` (application) namespaces, applies the policy only to the
-latter, and invokes [`policies/bin/smoke`](bin/smoke). The smoke test uses
-server-side dry-runs to prove one compliant Pod is admitted and two
-violating Pods are denied; it never creates test Pods. The full application
-is then deployed under the same policy and functionally exercised.
+```bash
+make foundation-up
+make foundation-validate
+make foundation-down
+```
 
-This policy is **opt-in**. It is not automatically installed in any real
-OpenShift cluster. Operators must verify the namespace and the policy
-compatibility before applying it outside the disposable test environment.
+## Test
+
+```bash
+bash -n policies/bin/smoke
+```
+
+## Config
+
+| Setting | Value | What |
+| --- | --- | --- |
+| Namespace label | `iot-policy=enforce` | Policy binding selector |
+| `failurePolicy` | `Fail` | Reject failed evaluations |
+| Action | `Deny` | Reject invalid Pods |
+
+## Interfaces
+
+`admission.yaml` requires CPU and memory bounds, a nonroot UID, read-only root filesystem, dropped capabilities and disabled privilege escalation. `bin/smoke` tests allowed and denied fixtures with API server dry-runs. See [cluster validation](../validation/cluster/README.md).
