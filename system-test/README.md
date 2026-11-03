@@ -1,35 +1,31 @@
-# Bounded performance check
+Part of [iot-analytics](../README.md).
 
-The old scripts used an obsolete JSON contract, assumed cluster tooling and
-printed unverified throughput targets. They have been retired.
+# system-test
 
-Use the single, measurable local HTTP benchmark:
+Bounded HTTP load generator for ingestion acknowledgments.
+
+## Run
 
 ```bash
-docker compose -f services/docker-compose.yml up -d --build
 python3 system-test/load.py --count 100 --concurrency 5
 ```
 
-This reports actual HTTP 202 acknowledgements, response-status totals,
-wall-clock throughput and p50/p95 acknowledgement latency. **It does not
-measure end-to-end database persistence** (the ordinary integration smoke
-test verifies persistence).
+The local ingestion API must already be running.
 
-Safety properties:
-
-- Defaults to loopback only. A remote URL needs explicit `--allow-remote`
-  and HTTPS. Never point a load test at a system you do not own.
-- Caps each invocation at 10,000 requests and concurrency at 64.
-- Creates a fresh synthetic device identity per run and unique event timestamps.
-- Does not change deployment replica counts, delete data or write bogus
-  success statuses. Exits nonzero if any request is not accepted.
-
-Run the offline tests with:
+## Test
 
 ```bash
 python3 -m unittest discover -s system-test -p 'test_*.py' -v
 ```
 
-The GitHub-hosted CI runs the offline checks and a short **25-event** test
-against actual ingestion inside the full-stack smoke job. These short CI
-runs are correctness checks, not a performance SLA or throughput claim.
+## Config
+
+| Flag | Default | What |
+| --- | --- | --- |
+| `--count` | See `--help` | Request count, max 10000 |
+| `--concurrency` | See `--help` | Concurrent calls, max 64 |
+| `--allow-remote` | Off | Permit a remote HTTPS endpoint |
+
+## Interfaces
+
+`load.py` posts synthetic readings to ingestion and reports status totals, elapsed throughput, and p50/p95 HTTP latency. Results measure Kafka acknowledgments, not SQL persistence. It exits nonzero on rejected requests.
