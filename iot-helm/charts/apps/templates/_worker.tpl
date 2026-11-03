@@ -16,33 +16,15 @@ spec:
     metadata:
       labels:
         app: {{ $name }}
-        app.kubernetes.io/part-of: iot-analytics
     spec:
-      securityContext:
-        seccompProfile:
-          type: RuntimeDefault
       initContainers:
         - name: wait-for-db
           image: busybox:1.36
-          command: ['sh', '-c', 'until nc -z {{ .root.Values.dbHost }} 5432; do echo waiting for db; sleep 2; done']
-          resources:
-            requests:
-              cpu: 10m
-              memory: 16Mi
-            limits:
-              cpu: 100m
-              memory: 64Mi
-          securityContext:
-            runAsUser: 10001
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
+          command: ['sh', '-c', 'until nc -z timescaledb 5432; do echo waiting for db; sleep 2; done']
       containers:
         - name: {{ $name }}
           image: {{ include "iot.image" (dict "name" $name "values" .root.Values) | quote }}
-          imagePullPolicy: {{ if eq .root.Values.imageMode "kind" }}Never{{ else if eq .root.Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
+          imagePullPolicy: {{ if eq .root.Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
           ports:
             - name: metrics
               containerPort: 8000
@@ -50,7 +32,7 @@ spec:
             - name: SERVICE_NAME
               value: {{ $name }}
             - name: DB_HOST
-              value: {{ .root.Values.dbHost | quote }}
+              value: timescaledb
             - name: DB_PORT
               value: "5432"
             - name: DB_NAME
@@ -69,7 +51,7 @@ spec:
                   name: iot-central-secret
                   key: timescaledb_password
             - name: KAFKA_BOOTSTRAP
-              value: {{ .root.Values.kafkaBootstrap | quote }}
+              value: kafka:9092
           resources:
             requests:
               cpu: 100m
@@ -78,7 +60,6 @@ spec:
               cpu: 300m
               memory: 256Mi
           securityContext:
-            runAsUser: 10001
             runAsNonRoot: true
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

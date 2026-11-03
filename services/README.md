@@ -1,37 +1,31 @@
-Part of [iot-analytics](../README.md).
+# Services
 
-# services
+Local run: [../README.md](../README.md) · operational commands:
+[../RUNBOOK.md](../RUNBOOK.md).
 
-Compose runs two Java APIs, four Python workers, Kafka and TimescaleDB.
-
-## Run
-
-```bash
-make up
-make smoke
-```
-
-## Test
-
-```bash
-mvn -B -ntp -f services/ingestion/pom.xml verify
-mvn -B -ntp -f services/device-registry/pom.xml verify
-```
-
-## Config
-
-| Var | Default | What |
+| Component | Container | Interface |
 | --- | --- | --- |
-| `IOT_DB_PASSWORD` | Required in `services/.env` | Shared local SQL credential |
+| device-registry | Spring Boot / Java 21 | localhost:8080 |
+| ingestion | Spring Boot / Java 17 | localhost:8081 |
+| kafka | Single-node Apache Kafka | internal:9092 |
+| timescaledb | TimescaleDB on PostgreSQL | localhost:5432 |
+| telemetry-worker | Python 3.11 | Kafka → telemetry |
+| stream-worker | Python 3.11 | Kafka → alerts topic |
+| alert-worker | Python 3.11 | alerts topic → DB |
+| kpi-job | Python 3.11, one-shot | DB → KPIs |
 
-## Interfaces
+Both Java services use Maven and have unit tests. Every Python worker has
+unit tests. The real container/database/flow checks run on every PR.
 
-| Component | Interface |
-| --- | --- |
-| [ingestion](ingestion/README.md) | HTTP telemetry to Kafka |
-| [device-registry](device-registry/README.md) | HTTP device metadata |
-| [workers](workers/README.md) | Kafka, SQL and KPI processing |
-| [schema.sql](schema.sql) | Fresh SQL bootstrap |
-| [docker-compose.yml](docker-compose.yml) | Local containers and ports |
+```bash
+docker compose -f services/docker-compose.yml up -d --build
+bash scripts/smoke-local.sh
+docker compose -f services/docker-compose.yml --profile batch run --rm kpi-job
+```
 
-See [configuration](../docs/reference/configuration.md) for complete local settings.
+**Data-model compatibility:** the SQL init script creates a fresh schema.
+Existing volumes require a planned migration; do not delete production data.
+The device registry's UUID is a management ID, whereas telemetry's `deviceId`
+is a logical source key. They are not currently linked by a foreign key.
+
+See [architecture](../docs/ARCHITECTURE.md) for delivery and replay semantics.

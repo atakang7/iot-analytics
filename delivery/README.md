@@ -1,28 +1,21 @@
-Part of [iot-analytics](../README.md).
+# Delivery contract
 
-# delivery
+The golden platform's important property is not a Jenkinsfile; it is that
+**a deployable artifact is built once, scanned, identified by digest and
+promoted without rebuilding**.
 
-Build, scan and sign six image digests, then record release intent in Git.
+This repository implements the *consumption boundary* for that contract:
+`release.py` validates a complete six-image GHCR manifest and produces
+values for OpenShift Helm deployments. `scripts/verify-helm.py` checks that
+rendered workloads use exactly those digests and no BuildConfig or ImageStream
+survives release mode.
 
-## Run
-
-```bash
-python3 delivery/release.py validate delivery/fixtures/release.test.json
+```
+source commit -> six scanned OCI images -> release.json -> helm values
+                                                       -> OpenShift (operator)
 ```
 
-## Test
-
-```bash
-python3 -m unittest discover -s delivery -p 'test_*.py' -v
-```
-
-## Config
-
-| Var | Default | What |
-| --- | --- | --- |
-| `GITHUB_SHA` | Required by publisher | Exact source revision |
-| `REGISTRY_TOKEN` | Required by publisher | GHCR write credential |
-
-## Interfaces
-
-`release.py` validates the six-image manifest; `assemble.py` combines image identities; `state.py` checks Git promotion history. [Publish commands](bin/README.md) share the [OCI library](lib/README.md). See [release procedure](../docs/how-to/publish-release.md).
+The producer/publisher, cryptographic signature check, release-state
+promotion and deployment checks are **not implemented by this PR**.
+Do not treat `delivery/fixtures/release.test.json` as deployable state.
+No cluster configuration, tokens or secrets belong in release.json.

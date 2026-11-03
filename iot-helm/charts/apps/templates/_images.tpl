@@ -14,8 +14,6 @@ A release requires an explicit immutable OCI digest for every service.
     {{- fail (printf "release image must use a sha256 digest: %s" $name) -}}
   {{- end -}}
   {{- $image -}}
-{{- else if eq $values.imageMode "kind" -}}
-  {{- printf "iot/%s:kind" $name -}}
 {{- else if eq $values.imageMode "lab" -}}
   {{- printf "image-registry.openshift-image-registry.svc:5000/atakangul-dev/%s:latest" $name -}}
 {{- else -}}

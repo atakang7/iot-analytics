@@ -43,47 +43,19 @@ spec:
     metadata:
       labels:
         app: device-registry
-        app.kubernetes.io/part-of: iot-analytics
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9090"
         prometheus.io/path: "/actuator/prometheus"
     spec:
-      securityContext:
-        seccompProfile:
-          type: RuntimeDefault
       initContainers:
         - name: wait-for-db
           image: busybox:1.36
-          command: ['sh', '-c', 'until nc -z {{ .Values.dbHost }} 5432; do echo waiting for db; sleep 2; done']
-          resources:
-            requests:
-              cpu: 10m
-              memory: 16Mi
-            limits:
-              cpu: 100m
-              memory: 64Mi
-          securityContext:
-            runAsUser: 10001
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
+          command: ['sh', '-c', 'until nc -z timescaledb 5432; do echo waiting for db; sleep 2; done']
       containers:
         - name: device-registry
           image: {{ include "iot.image" (dict "name" "device-registry" "values" .Values) | quote }}
-          imagePullPolicy: {{ if eq .Values.imageMode "kind" }}Never{{ else if eq .Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
-          securityContext:
-            runAsUser: 10001
-            runAsNonRoot: true
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          volumeMounts:
-            - name: runtime-tmp
-              mountPath: /tmp
+          imagePullPolicy: {{ if eq .Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
           ports:
             - containerPort: 8080
               name: http
@@ -91,7 +63,7 @@ spec:
               name: management
           env:
             - name: SPRING_DATASOURCE_URL
-              value: {{ printf "jdbc:postgresql://%s:5432/iot" .Values.dbHost | quote }}
+              value: jdbc:postgresql://timescaledb:5432/iot
             - name: SPRING_DATASOURCE_USERNAME
               valueFrom:
                 secretKeyRef:
@@ -102,7 +74,7 @@ spec:
                 secretKeyRef:
                   name: iot-central-secret
                   key: timescaledb_password
-            - name: JAVA_TOOL_OPTIONS
+            - name: JAVA_OPTS
               value: "-Xms256m -Xmx512m"
           resources:
             requests:
@@ -127,10 +99,6 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
-      volumes:
-        - name: runtime-tmp
-          emptyDir:
-            sizeLimit: 128Mi
 ---
 apiVersion: v1
 kind: Service
@@ -145,9 +113,6 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
-    - name: metrics
-      port: 9090
-      targetPort: management
   type: ClusterIP
 {{- if .Values.routes.enabled }}
 ---

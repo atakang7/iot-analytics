@@ -1,40 +1,42 @@
-Part of [iot-analytics](../../README.md).
+# Analytics workers
 
-# workers
+Event flow:
 
-Four Python entry points share event, transport and database code.
-
-## Run
-
-```bash
-docker compose -f services/docker-compose.yml up -d --build telemetry-worker stream-worker alert-worker
-make kpi
+```text
+Kafka iot.telemetry
+  ├── telemetry-worker ──► TimescaleDB.telemetry ──► kpi-job ──► TimescaleDB.kpis
+  └── stream-worker ──► Kafka iot.alerts ──► alert-worker ──► TimescaleDB.alerts
 ```
 
-## Test
+All streaming consumers commit Kafka offsets **only after** their relevant
+database write or Kafka publish succeeds. Delivery is at least once and
+replays are deduplicated by logical event keys.
+
+- Telemetry: bounded batches, finite numbers, and duplicate sample identity
+  `(device_id, sensor_id, timestamp)`.
+- Stream: global or device-type thresholds, rate-change and repeated-value
+  alerts. Stream history is held in memory and resets after restart.
+- Alerts: stable alert IDs, idempotent updates and persisted acknowledgement
+  flags.
+- KPIs: one closed five-minute window per invocation, by device **and sensor**;
+  computed rows and watermark share one SQL transaction. The power-sample
+  `sum` is not a physical energy calculation.
+
+`kpi-job` is a one-shot batch task, not a long-running worker:
 
 ```bash
-(cd services/workers && for worker in telemetry-worker stream-worker alert-worker kpi-job; do
-  (cd "$worker" && PYTHONPATH=.. python -m pytest -q) || exit 1
-done)
+docker compose -f services/docker-compose.yml --profile batch run --rm kpi-job
 ```
 
-## Config
+Isolated Python unit tests:
 
-| Var | Default | What |
-| --- | --- | --- |
-| `KAFKA_BOOTSTRAP` | `localhost:9092` | Broker address |
-| `DB_PASSWORD` | Required for SQL | Database credential |
-| `METRICS_PORT` | `8000` | Worker metrics listener |
+```bash
+cd services/workers
+for worker in telemetry-worker stream-worker alert-worker kpi-job; do
+  (cd "$worker" && PYTHONPATH=.. python -m pytest -q)
+done
+```
 
-## Interfaces
-
-| Component | Input and output |
-| --- | --- |
-| [telemetry-worker](telemetry-worker/README.md) | Kafka telemetry to SQL |
-| [stream-worker](stream-worker/README.md) | Kafka telemetry to Kafka alerts |
-| [alert-worker](alert-worker/README.md) | Kafka alerts to SQL |
-| [kpi-job](kpi-job/README.md) | SQL telemetry to window KPIs |
-| [common](common/README.md) | Event models and adapters |
-
-See [replay behavior](../../docs/explanation/consistency.md).
+The dependencies are in each worker's `requirements.txt`; GitHub Actions
+installs them and runs these tests on every PR. See
+[architecture](../../docs/ARCHITECTURE.md) and [runbook](../../RUNBOOK.md).

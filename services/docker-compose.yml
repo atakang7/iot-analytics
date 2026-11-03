@@ -6,8 +6,6 @@ x-worker-environment: &worker-environment
   DB_USER: iot
   DB_PASSWORD: ${IOT_DB_PASSWORD:?Create services/.env with a unique password}
   KAFKA_BOOTSTRAP: kafka:9092
-  KAFKA_TELEMETRY_TOPIC: ${KAFKA_TELEMETRY_TOPIC:-iot.telemetry}
-  KAFKA_ALERTS_TOPIC: ${KAFKA_ALERTS_TOPIC:-iot.alerts}
   METRICS_PORT: "8000"
 
 services:
@@ -69,7 +67,6 @@ services:
     build: ./ingestion
     environment:
       KAFKA_BOOTSTRAP: kafka:9092
-      KAFKA_TELEMETRY_TOPIC: ${KAFKA_TELEMETRY_TOPIC:-iot.telemetry}
     ports:
       - "127.0.0.1:8081:8081"
       - "127.0.0.1:9090:9090"

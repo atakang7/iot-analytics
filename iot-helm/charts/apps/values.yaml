@@ -4,7 +4,3 @@ routes:
 # lab: binary OpenShift BuildConfigs; release: digest-pinned GHCR images.
 imageMode: lab
 images: {}
-
-# Resolve dependencies in a separate namespace for the policy-enforced app lab.
-dbHost: timescaledb
-kafkaBootstrap: kafka:9092

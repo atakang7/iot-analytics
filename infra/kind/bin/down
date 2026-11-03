@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-# Delete exactly one explicitly named kind cluster; never use kubectl delete --all.
-set -Eeuo pipefail
-CLUSTER="${IOT_KIND_CLUSTER:-iot-analytics}"
-if kind get clusters | grep -Fxq "$CLUSTER"; then
-  kind delete cluster --name "$CLUSTER"
-else
-  echo "Named kind cluster $CLUSTER is already absent"
-fi

@@ -1,61 +1,102 @@
-# iot-analytics
+# IoT Analytics
 
-IoT telemetry lab for engineers testing Spring Boot ingestion, Kafka consumers and TimescaleDB analytics.
+An end-to-end telemetry laboratory: a Spring Boot 4 / Java 21 device registry and ingestion API,
+Kafka streaming consumers, TimescaleDB storage and five-minute analytics. The
+repository deliberately separates **application correctness**, **local operation**,
+and an **optional OpenShift deployment experiment**.
+
+## Repository map
+
+| Path | Responsibility |
+| --- | --- |
+| [services/](services/README.md) | Java APIs, Python workers, database schema, local Compose |
+| [scripts/](scripts/) | Simulator and reproducible smoke checks |
+| [system-test/](system-test/README.md) | Bounded, measured HTTP load testing |
+| [iot-helm/](iot-helm/README.md) | OpenShift-oriented chart (not a vanilla Kubernetes chart) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Event contract, delivery and consistency model |
+| [RUNBOOK.md](RUNBOOK.md) | Start, verify, investigate, recover, shut down |
+| [.github/workflows/ci.yaml](.github/workflows/ci.yaml) | GitHub-hosted verification gates |
+
+## Data flow
 
 ```text
-+-----------+  HTTP  +-----------+  Kafka  +------------------+  SQL  +-------------+
-| simulator | -----> | ingestion | ------> | telemetry-worker | ----> | timescaledb |
-+-----------+        +-----------+         +------------------+       +-------------+
-                         |
-                         | Kafka
-                         v
-                 +---------------+  Kafka  +--------------+
-                 | stream-worker | ------> | alert-worker |
-                 +---------------+         +--------------+
+                           ┌───────────────────┐
+POST /devices ────────────►│ Spring registry   │──────────► devices
+                           └───────────────────┘               │
+                                                               ▼
+POST /telemetry  ──► Spring ingestion ──► Kafka: iot.telemetry ─┬─► telemetry worker
+                 202 on Kafka acknowledgment                  │       │
+                                                             │       ▼
+                                                             │   TimescaleDB
+                                                             │    telemetry
+                                                             │       │
+                                                             │       ▼
+                                                             │  5-minute KPI job ──► kpis
+                                                             │
+                                                             └─► stream worker
+                                                                    │
+                                                              Kafka: iot.alerts
+                                                                    │
+                                                              alert worker ──► alerts
 ```
 
-The alert worker stores alerts in SQL; `kpi-job` calculates five-minute windows from stored telemetry.
+The registry owns its UUID database key; the telemetry `deviceId` is a
+logical sensor source identifier and is not currently foreign-key validated
+against the registry.
 
-## Quick start
+## Quick start (local development)
 
-Requires Docker Compose v2, Bash and OpenSSL.
+Requirements: Docker Engine with Compose v2, a Bash shell, and `openssl`.
 
 ```bash
 cp services/.env.example services/.env
 sed -i "s/^IOT_DB_PASSWORD=.*/IOT_DB_PASSWORD=$(openssl rand -hex 32)/" services/.env
 chmod 600 services/.env
-make up
-make smoke
+
+docker compose -f services/docker-compose.yml up -d --build
+bash scripts/smoke-local.sh
 ```
 
-## Layout
+On a fresh volume, Compose initializes the TimescaleDB schema automatically.
+It starts the APIs, Kafka, three long-running workers and the database. The
+`kpi-job` is deliberately one-shot:
 
-| Path | What it is |
-| --- | --- |
-| [services/](services/README.md) | Java APIs, Python workers and Compose |
-| [contracts/telemetry/](contracts/telemetry/README.md) | Shared HTTP and Kafka reading contract |
-| [iot-helm/](iot-helm/README.md) | OpenShift lab and application charts |
-| [infra/kind/](infra/kind/README.md) | Disposable application cluster |
-| [infra/cluster/](infra/cluster/README.md) | Three-node Kubernetes foundation test |
-| [infra/db/](infra/db/README.md) | Backup and restore rehearsal |
-| [platform/observability/](platform/observability/README.md) | Prometheus, Grafana, Loki and alerts |
-| [policies/](policies/README.md) | Kubernetes admission policy |
-| [validation/](validation/README.md) | Cluster and application checks |
-| [delivery/](delivery/README.md) | OCI publication and release identity |
-| [state/](state/README.md) | Git-tracked environment release intent |
-| [simulator/](simulator/README.md) | OpenShift sensor emitter |
-| [system-test/](system-test/README.md) | Bounded HTTP load check |
-| [scripts/](scripts/README.md) | Smoke and manifest checks |
-| [security/](security/README.md) | Workflow security checks |
-| [.github/workflows/](.github/workflows/README.md) | CI and manual publish |
+```bash
+docker compose -f services/docker-compose.yml --profile batch run --rm kpi-job
+```
 
-## Docs
+Use [RUNBOOK.md](RUNBOOK.md) for diagnostics, clean shutdown and safe upgrades.
 
-[Docs index](docs/README.md) | [local operations](docs/how-to/operate-compose.md) | [API reference](docs/reference/api.md) | [architecture](docs/explanation/architecture.md)
+## API contract
 
-## Limits
+- `POST /devices` on `127.0.0.1:8080`: JSON device metadata; returns 201 + `Location`.
+- `GET /devices`, `GET /devices/{id}`, `PUT /devices/{id}`, `DELETE /devices/{id}`.
+- `POST /telemetry` on `127.0.0.1:8081`: returns **202 only after Kafka acknowledges the publish**; 400 for invalid input, 503 for publish failure.
+- `GET /telemetry/health`: ingestion process-only health endpoint.
+- Management health + Prometheus metrics: `127.0.0.1:9090/actuator/...` for ingestion, `127.0.0.1:9091/actuator/...` for registry. Separate management ports are not exposed by the OpenShift Route.
 
-- HTTP `202` confirms a Kafka acknowledgment, not SQL persistence.
-- Local Kafka and the HTTP APIs have no authentication.
-- Bootstrap SQL applies to new database volumes only.
-- Kind tests use disposable infrastructure; live OpenShift deployment is unverified.
+Example:
+
+```bash
+curl -i http://127.0.0.1:8081/telemetry \
+  -H 'Content-Type: application/json' \
+  -d '{"deviceId":"motor-1","deviceType":"motor","sensorId":"temp-1","sensorType":"temperature","timestamp":"2026-11-03T10:00:00Z","unit":"celsius","value":{"value":72.5}}'
+```
+
+`202` means Kafka accepted the event, **not** that downstream storage/analytics
+has completed. See [event semantics](docs/ARCHITECTURE.md).
+
+## Verification and operating limits
+
+Pull requests run Python tests, Java tests, **six image builds**, Helm lint and
+rendering, a real TimescaleDB initialization/constraint test, and a full
+HTTP → Kafka → storage → alert → KPI integration smoke test.
+
+This is a reproducible **development/portfolio platform, not a production
+service**. Local Kafka has no authentication/TLS, APIs have no authentication
+or rate limits, and the database uses a single persistent Compose volume.
+The OpenShift manifests remain an optional, environment-specific lab; CI
+does not claim to have deployed to a live OpenShift cluster. Existing database
+volumes need explicit migrations; the SQL files initialize **new volumes only**.
+
+License: [MIT](LICENSE).

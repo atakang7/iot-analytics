@@ -10,31 +10,13 @@ permissions:
   contents: read
 
 jobs:
-  supply-chain:
-    name: Secret scan and immutable Action refs
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: '3.11'
-      - name: Forbid mutable Actions
-        run: python3 security/verify_actions.py
-      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-        with:
-          version: v0.74.0
-          cache: false
-      - name: Scan repo secrets
-        run: trivy repo --scanners secret --offline-scan --exit-code 1 --quiet .
-
   python:
     name: Python syntax and unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Install test dependencies
@@ -46,12 +28,7 @@ jobs:
       - name: Validate operational shell scripts and load test
         run: |
           set -euo pipefail
-          for script in scripts/*.sh simulator/*.sh infra/kind/bin/* validation/kind/*.sh policies/bin/* platform/observability/bin/* validation/observability/*.sh infra/cluster/bin/* validation/cluster/*.sh; do bash -n "$script"; done
-          python -m unittest discover -s security -p 'test_*.py' -v
-          python -m unittest discover -s scripts -p 'test_verify_docs.py' -v
-          python scripts/verify-docs.py
-          (cd platform/observability/collector && python -m unittest discover -p 'test_*.py' -v)
-          python -m compileall -q platform/observability/collector validation/observability
+          for script in scripts/*.sh simulator/*.sh; do bash -n "$script"; done
           python -m compileall -q system-test
           python -m unittest discover -s system-test -p 'test_*.py' -v
       - name: Test every worker
@@ -70,8 +47,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
@@ -87,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@v4
       - name: Validate Compose
         env:
           IOT_DB_PASSWORD: ci-test-placeholder
@@ -101,20 +78,18 @@ jobs:
           for worker in telemetry-worker stream-worker alert-worker kpi-job; do
             docker build -t "iot/${worker}:ci" -f "services/workers/${worker}/Dockerfile" services/workers
           done
-          docker build -t iot/log-collector:ci platform/observability/collector
 
   helm:
     name: Helm chart validation
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4.3.0
         with:
           version: v3.16.4
       - name: Validate chart and both deployment modes
         run: |
-          bash -n delivery/bin/publish-image delivery/bin/test-local-publish delivery/lib/oci.sh
           python3 -m unittest discover -s delivery -p 'test_*.py' -v
           python3 delivery/release.py validate delivery/fixtures/release.test.json
           python3 delivery/release.py helm-values delivery/fixtures/release.test.json --output /tmp/iot-release-values.json
@@ -135,28 +110,6 @@ jobs:
             -f /tmp/iot-release-values.json > /tmp/iot-immutable-release.yaml
           python3 scripts/verify-helm.py /tmp/iot-immutable-release.yaml \
             --release-manifest delivery/fixtures/release.test.json
-          helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml \
-            --set apps.imageMode=kind --set infra.enabled=false \
-            --set monitoring.enabled=false > /tmp/iot-kind.yaml
-          python3 scripts/verify-kind.py /tmp/iot-kind.yaml
-          python3 scripts/verify-observability.py
-          docker run --rm --entrypoint /bin/promtool \
-            -v "$PWD/platform/observability/config:/etc/prometheus:ro" \
-            prom/prometheus:v3.15.1 check config /etc/prometheus/prometheus.yml
-
-  release-state:
-    name: Git state and promotion history policy
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          fetch-depth: 0
-      - name: Validate release state and history
-        run: |
-          set -euo pipefail
-          python3 -m unittest discover -s delivery -p 'test_*.py' -v
-          python3 delivery/state.py verify --history-ref origin/main
 
   database:
     name: TimescaleDB initialization and replay invariants
@@ -165,7 +118,7 @@ jobs:
     env:
       IOT_DB_PASSWORD: ci-test-placeholder
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@v4
       - name: Verify schema copies are identical
         run: |
           cmp services/schema.sql iot-helm/charts/infra/configs/schema.sql
@@ -188,19 +141,6 @@ jobs:
         run: |
           docker compose -f services/docker-compose.yml exec -T timescaledb \
             psql -U iot -d iot -v ON_ERROR_STOP=1 < scripts/verify-schema.sql
-      - name: Prove backup can be restored to another TimescaleDB database
-        run: |
-          set -euo pipefail
-          bash -n infra/db/bin/backup infra/db/bin/restore-check
-          docker compose -f services/docker-compose.yml exec -T timescaledb \
-            psql -U iot -d iot -v ON_ERROR_STOP=1 < infra/db/fixtures/recovery-seed.sql
-          dir="$(mktemp -d)"
-          trap 'rm -rf "$dir"' EXIT
-          bash infra/db/bin/backup "$dir/snapshot.dump"
-          bash infra/db/bin/restore-check "$dir/snapshot.dump"
-          original="$(docker compose -f services/docker-compose.yml exec -T timescaledb \
-            psql -U iot -d iot -Atc "SELECT count(*) FROM telemetry WHERE device_id='ci-recovery'" | tr -d '\r\n')"
-          test "$original" = 1
       - name: Database logs
         if: failure()
         run: docker compose -f services/docker-compose.yml logs timescaledb
@@ -212,7 +152,7 @@ jobs:
     env:
       IOT_DB_PASSWORD: ci-test-placeholder
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/checkout@v4
       - name: Build and launch real services
         run: |
           docker compose -f services/docker-compose.yml up -d --build \
@@ -229,90 +169,3 @@ jobs:
       - name: Shut down test stack
         if: always()
         run: docker compose -f services/docker-compose.yml down -v --remove-orphans
-
-  kubernetes:
-    name: Real Kubernetes APIs, Kafka, telemetry, alerts and KPI
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: helm/kind-action@92086f6be054225fa813e0a4b13787fc9088faab # v1.13.0
-        with:
-          install_only: true
-      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-        with:
-          version: v3.16.4
-      - name: Provision disposable cluster, dependencies and all application Pods
-        run: bash infra/kind/bin/up
-      - name: Cross-service Kubernetes E2E proof
-        run: bash validation/kind/e2e.sh
-      - name: Deploy isolated Prometheus, Loki, Grafana and Alertmanager
-        run: bash platform/observability/bin/up
-      - name: Prove actual metrics, alert rules, dashboards and log delivery
-        run: bash validation/observability/smoke.sh
-      - name: Inspect Kubernetes state on failure
-        if: failure()
-        run: |
-          kubectl get pods -A -o wide || true
-          kubectl -n iot-validation describe pods || true
-          kubectl -n iot-validation get events --sort-by=.metadata.creationTimestamp || true
-          kubectl -n iot-dependencies get pods,services -o wide || true
-          kubectl -n iot-dependencies get events --sort-by=.metadata.creationTimestamp || true
-          kubectl -n iot-dependencies logs deployment/kafka --tail=120 || true
-          kubectl -n iot-dependencies logs deployment/timescaledb --tail=120 || true
-          kubectl -n iot-observability get pods -o wide || true
-          kubectl -n iot-observability get events --sort-by=.metadata.creationTimestamp || true
-          kubectl -n iot-observability logs deployment/prometheus --tail=100 || true
-          kubectl -n iot-observability logs deployment/loki --tail=100 || true
-          kubectl -n iot-observability logs deployment/grafana --tail=100 || true
-          kubectl -n iot-validation logs deployment/iot-log-collector --tail=100 || true
-          for name in ingestion device-registry telemetry-worker stream-worker alert-worker; do
-            kubectl -n iot-validation logs "deployment/$name" --all-containers --tail=150 || true
-          done
-      - name: Remove only the ephemeral kind cluster
-        if: always()
-        run: bash infra/kind/bin/down
-
-  foundation:
-    name: Three-node Kubernetes networking, PV and admission
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: helm/kind-action@92086f6be054225fa813e0a4b13787fc9088faab # v1.13.0
-        with:
-          install_only: true
-      - name: Provision distinct three-node cluster
-        run: bash infra/cluster/bin/up
-      - name: Validate CNI, cross-node DNS, persistent storage and admission
-        run: bash validation/cluster/validate.sh
-      - name: Inspect foundation failure
-        if: failure()
-        run: |
-          kubectl get nodes -o wide || true
-          kubectl get pods -A -o wide || true
-          kubectl get pv,pvc -A || true
-          kubectl get events -A --sort-by=.metadata.creationTimestamp || true
-          kubectl -n iot-cluster-proof describe pods || true
-      - name: Delete only the disposable foundation cluster
-        if: always()
-        run: bash infra/cluster/bin/down
-
-  oci-release-proof:
-    name: Build-once OCI, vulnerability gate, registry digest and signature
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
-        with:
-          version: v0.74.0
-          cache: false
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-      - name: Install registry transport
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq skopeo
-      - name: Build, scan, publish, compare and sign exact OCI artifact
-        run: bash delivery/bin/test-local-publish

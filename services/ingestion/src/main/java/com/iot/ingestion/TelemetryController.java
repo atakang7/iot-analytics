@@ -1,7 +1,6 @@
 package com.iot.ingestion;
 
 import tools.jackson.core.JacksonException;
-import org.springframework.beans.factory.annotation.Value;
 import tools.jackson.databind.json.JsonMapper;
 import jakarta.validation.Valid;
 import java.util.Map;
@@ -19,15 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/telemetry")
 public class TelemetryController {
 
+    private static final String TOPIC = "iot.telemetry";
     private final KafkaTemplate<String, String> kafka;
     private final JsonMapper mapper;
-    private final String telemetryTopic;
 
-    public TelemetryController(KafkaTemplate<String, String> kafka, JsonMapper mapper,
-            @Value("${iot.telemetry-topic:iot.telemetry}") String telemetryTopic) {
+    public TelemetryController(KafkaTemplate<String, String> kafka, JsonMapper mapper) {
         this.kafka = kafka;
         this.mapper = mapper;
-        this.telemetryTopic = telemetryTopic;
     }
 
     @PostMapping
@@ -41,7 +38,7 @@ public class TelemetryController {
                     ResponseEntity.badRequest().body(Map.of("status", "invalid_payload")));
         }
 
-        return kafka.send(telemetryTopic, telemetry.deviceId(), json)
+        return kafka.send(TOPIC, telemetry.deviceId(), json)
                 .handle((ack, failure) -> {
                     if (failure != null) {
                         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)

@@ -27,6 +27,3 @@ management:
     web:
       exposure:
         include: health,prometheus
-
-iot:
-  telemetry-topic: ${KAFKA_TELEMETRY_TOPIC:iot.telemetry}
