@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 CLUSTER="${IOT_KIND_CLUSTER:-iot-analytics}"
 NAMESPACE="${IOT_KIND_NAMESPACE:-iot-validation}"
+DEPS_NAMESPACE="iot-dependencies"
 [[ "$(kubectl config current-context)" == "kind-$CLUSTER" ]] || {
   echo "Refusing to run on a non-kind cluster" >&2; exit 1;
 }
@@ -42,7 +43,7 @@ status="$(curl -sS -o "$temp/device" -w '%{http_code}' \
 [[ "$status" == 201 ]] || { cat "$temp/device"; exit 1; }
 
 db() {
-  kubectl -n "$NAMESPACE" exec deploy/timescaledb -- \
+  kubectl -n "$DEPS_NAMESPACE" exec deploy/timescaledb -- \
     psql -U iot -d iot -Atc "$1" | tr -d '\r\n'
 }
 device="kind-smoke-$(date +%s)-$$"
