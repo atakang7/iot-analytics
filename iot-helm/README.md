@@ -70,3 +70,17 @@ python3 scripts/verify-helm.py /tmp/release.yaml --release-manifest path/to/rele
 The committed `release.test.json` is **synthetic test input**, not published
 images. Helm rendering alone does not establish OCI signature, origin, live
 readiness, or deployability; those require a separate release pipeline.
+
+## Real Kubernetes runtime validation
+
+In addition to OpenShift rendering, the portable `apps` subchart is tested
+inside a **real kind Kubernetes cluster** on GitHub runners. The test-only
+`apps.imageMode=kind` uses runner-built, locally loaded `iot/*:kind` images
+and no OpenShift BuildConfigs/ImageStreams. It deploys only the apps; the
+disposable Kafka and TimescaleDB dependencies are in
+[`infra/kind/`](../infra/kind/README.md). The runtime E2E validator traces
+the real HTTP/Service/Kafka/TimescaleDB/alert/KPI path.
+
+The Spring API Services explicitly expose management port 9090 to internal
+Prometheus scraping; the older chart only exposed the HTTP port, so a
+syntactically valid scrape target could never actually succeed.

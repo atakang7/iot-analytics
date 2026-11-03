@@ -24,7 +24,7 @@ spec:
       containers:
         - name: {{ $name }}
           image: {{ include "iot.image" (dict "name" $name "values" .root.Values) | quote }}
-          imagePullPolicy: {{ if eq .root.Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
+          imagePullPolicy: {{ if eq .root.Values.imageMode "kind" }}Never{{ else if eq .root.Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
           ports:
             - name: metrics
               containerPort: 8000

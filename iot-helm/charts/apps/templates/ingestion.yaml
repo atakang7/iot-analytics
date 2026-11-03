@@ -51,7 +51,7 @@ spec:
       containers:
         - name: ingestion
           image: {{ include "iot.image" (dict "name" "ingestion" "values" .Values) | quote }}
-          imagePullPolicy: {{ if eq .Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
+          imagePullPolicy: {{ if eq .Values.imageMode "kind" }}Never{{ else if eq .Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
           ports:
             - containerPort: 8081
               name: http
@@ -95,6 +95,9 @@ spec:
     - name: http
       port: 8081
       targetPort: 8081
+    - name: metrics
+      port: 9090
+      targetPort: management
 {{- if .Values.routes.enabled }}
 ---
 apiVersion: route.openshift.io/v1

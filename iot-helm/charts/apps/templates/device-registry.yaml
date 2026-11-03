@@ -55,7 +55,7 @@ spec:
       containers:
         - name: device-registry
           image: {{ include "iot.image" (dict "name" "device-registry" "values" .Values) | quote }}
-          imagePullPolicy: {{ if eq .Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
+          imagePullPolicy: {{ if eq .Values.imageMode "kind" }}Never{{ else if eq .Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
           ports:
             - containerPort: 8080
               name: http
@@ -113,6 +113,9 @@ spec:
     - name: http
       port: 8080
       targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: management
   type: ClusterIP
 {{- if .Values.routes.enabled }}
 ---
