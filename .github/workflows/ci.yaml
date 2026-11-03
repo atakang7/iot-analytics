@@ -47,6 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           for script in scripts/*.sh simulator/*.sh infra/kind/bin/* validation/kind/*.sh policies/bin/*; do bash -n "$script"; done
+          python -m unittest discover -s security -p 'test_*.py' -v
           python -m compileall -q system-test
           python -m unittest discover -s system-test -p 'test_*.py' -v
       - name: Test every worker

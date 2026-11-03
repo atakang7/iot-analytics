@@ -45,3 +45,14 @@ against GHCR** and **live OpenShift deployment is not verified**.
 Do not manually substitute synthetic test fixture digests. Never store secrets
 in a release manifest. Environment state/promotion is implemented by [state.py](state.py) and
 [state/](../state/). Live cluster verification remains operator-owned.
+
+## Supply-chain trust boundary
+
+Every Action is now pinned to a verified full Git SHA, including the patched
+post-March-2026 Trivy installer. Pull requests run a secret scan and
+`security/verify_actions.py` forbids reintroducing mutable Action tags.
+The publisher passes the **OCI archive itself** to Trivy before copying that
+exact artifact into GHCR; a raw extracted directory is not a container scan.
+
+The publication workflow is still manual, separate from CI. It has not
+published a registry artifact in this repository yet.
