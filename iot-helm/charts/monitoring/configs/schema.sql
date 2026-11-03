@@ -21,6 +21,10 @@ CREATE TABLE telemetry (
     value JSONB NOT NULL
 );
 SELECT create_hypertable('telemetry', 'time');
+-- One logical sensor sample may be replayed, but must only be stored once.
+-- TimescaleDB requires every unique index to include the partition time.
+CREATE UNIQUE INDEX idx_telemetry_identity
+    ON telemetry (device_id, sensor_id, time);
 CREATE INDEX idx_telemetry_device ON telemetry (device_id, time DESC);
 CREATE INDEX idx_telemetry_sensor ON telemetry (sensor_type, time DESC);
 ALTER TABLE telemetry SET (

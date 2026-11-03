@@ -97,3 +97,48 @@ class TestTelemetryParsing:
         }
         t = Telemetry.from_dict(data)
         assert t.vibration_rms() is None
+
+def test_flush_batch_commits_after_insert(monkeypatch):
+    import main
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+    class Connection:
+        commits = 0
+        rollbacks = 0
+        closed = False
+
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            self.commits += 1
+
+        def rollback(self):
+            self.rollbacks += 1
+
+        def close(self):
+            self.closed = True
+
+    conn = Connection()
+    monkeypatch.setattr(main, "get_connection", lambda: conn)
+    calls = []
+
+    def insert(cursor, statement, rows, fetch):
+        calls.append((statement, rows, fetch))
+        return [("motor",)]
+
+    monkeypatch.setattr(main, "execute_values", insert)
+    inserted = main.flush_batch([{
+        "time": "2026-11-03T00:00:00Z",
+        "device_id": "d1", "device_type": "motor", "sensor_id": "s1",
+        "sensor_type": "temperature", "unit": "celsius", "value": '{"value": 9}',
+    }])
+    assert inserted == 1
+    assert conn.commits == 1 and conn.rollbacks == 0 and conn.closed
+    assert "ON CONFLICT (device_id, sensor_id, time) DO NOTHING" in calls[0][0]

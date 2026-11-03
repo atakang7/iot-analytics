@@ -88,3 +88,38 @@ jobs:
           helm lint iot-helm -f iot-helm/values-dev.yaml
           helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml > /tmp/iot-rendered.yaml
           test -s /tmp/iot-rendered.yaml
+
+  database:
+    name: TimescaleDB initialization and replay invariants
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      IOT_DB_PASSWORD: ci-test-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify schema copies are identical
+        run: |
+          cmp services/schema.sql iot-helm/charts/infra/configs/schema.sql
+          cmp services/schema.sql iot-helm/charts/monitoring/configs/schema.sql
+      - name: Start real TimescaleDB
+        run: docker compose -f services/docker-compose.yml up -d timescaledb
+      - name: Wait for initialized schema
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 90); do
+            if docker compose -f services/docker-compose.yml exec -T timescaledb \
+                psql -U iot -d iot -v ON_ERROR_STOP=1 -Atc \
+                "SELECT 1 FROM information_schema.tables WHERE table_name='job_watermarks'" 2>/dev/null | grep -q '^1$'; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f services/docker-compose.yml logs timescaledb
+          exit 1
+      - name: Verify SQL constraints and replay behavior
+        run: |
+          docker compose -f services/docker-compose.yml exec -T timescaledb \
+            psql -U iot -d iot -v ON_ERROR_STOP=1 < scripts/verify-schema.sql
+      - name: Database logs
+        if: failure()
+        run: docker compose -f services/docker-compose.yml logs timescaledb
