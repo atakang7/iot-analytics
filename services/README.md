@@ -1,17 +1,37 @@
-# Services
+Part of [iot-analytics](../README.md).
 
-| Path | Responsibility |
+# services
+
+Compose runs two Java APIs, four Python workers, Kafka and TimescaleDB.
+
+## Run
+
+```bash
+make up
+make smoke
+```
+
+## Test
+
+```bash
+mvn -B -ntp -f services/ingestion/pom.xml verify
+mvn -B -ntp -f services/device-registry/pom.xml verify
+```
+
+## Config
+
+| Var | Default | What |
+| --- | --- | --- |
+| `IOT_DB_PASSWORD` | Required in `services/.env` | Shared local SQL credential |
+
+## Interfaces
+
+| Component | Interface |
 | --- | --- |
-| `ingestion/` | Java 21 HTTP ingestion and Kafka producer |
-| `device-registry/` | Java 21 device metadata CRUD |
-| `workers/common/` | Python 3.11 domain and transport code |
-| `workers/telemetry-worker/` | Kafka telemetry to TimescaleDB |
-| `workers/stream-worker/` | Threshold checks and alert publishing |
-| `workers/alert-worker/` | Kafka alerts to TimescaleDB |
-| `workers/kpi-job/` | Closed five-minute KPI computation |
-| `schema.sql` | Fresh database bootstrap |
-| `docker-compose.yml` | Local stack |
+| [ingestion](ingestion/README.md) | HTTP telemetry to Kafka |
+| [device-registry](device-registry/README.md) | HTTP device metadata |
+| [workers](workers/README.md) | Kafka, SQL and KPI processing |
+| [schema.sql](schema.sql) | Fresh SQL bootstrap |
+| [docker-compose.yml](docker-compose.yml) | Local containers and ports |
 
-The registry UUID and the telemetry source ID are separate. See [domain context](../CONTEXT.md), [event fields](../docs/reference/events.md) and [local operations](../docs/how-to/operate-compose.md).
-
-Run the full local pipeline with `make up && make smoke` from the repository root. Each Java service has Maven tests; each Python worker has pytest tests.
+See [configuration](../docs/reference/configuration.md) for complete local settings.
