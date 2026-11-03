@@ -25,6 +25,12 @@ jobs:
         run: |
           python -m compileall -q services/workers
           ruff check --select E4,E7,E9,F63,F7,F82 services/workers
+      - name: Validate operational shell scripts and load test
+        run: |
+          set -euo pipefail
+          for script in scripts/*.sh simulator/*.sh; do bash -n "$script"; done
+          python -m compileall -q system-test
+          python -m unittest discover -s system-test -p 'test_*.py' -v
       - name: Test every worker
         env:
           DB_PASSWORD: ci-test-placeholder
@@ -138,6 +144,8 @@ jobs:
             timescaledb kafka ingestion device-registry telemetry-worker stream-worker alert-worker
       - name: Exercise device API and full data flow
         run: bash scripts/smoke-local.sh
+      - name: Measured bounded HTTP throughput check
+        run: python3 system-test/load.py --count 25 --concurrency 5
       - name: Inspect stack on failure
         if: failure()
         run: |
