@@ -111,6 +111,7 @@ spec:
   ports:
     - port: 3000
       targetPort: 3000
+{{- if .Values.routes.grafana }}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -125,3 +126,4 @@ spec:
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
+{{- end }}

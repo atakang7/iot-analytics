@@ -88,6 +88,11 @@ jobs:
           helm lint iot-helm -f iot-helm/values-dev.yaml
           helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml > /tmp/iot-rendered.yaml
           test -s /tmp/iot-rendered.yaml
+          python3 -m pip install --quiet PyYAML==6.0.2
+          python3 scripts/verify-helm.py /tmp/iot-rendered.yaml
+          helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml \
+            --set apps.routes.enabled=true --set monitoring.routes.grafana=true > /tmp/iot-optional-routes.yaml
+          python3 scripts/verify-helm.py /tmp/iot-optional-routes.yaml --routes-enabled
 
   database:
     name: TimescaleDB initialization and replay invariants

@@ -93,6 +93,7 @@ spec:
     - name: http
       port: 8081
       targetPort: 8081
+{{- if .Values.routes.enabled }}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -109,3 +110,4 @@ spec:
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
+{{- end }}

@@ -17,7 +17,18 @@ helm lint iot-helm -f iot-helm/values-dev.yaml
 helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml
 ```
 
-CI performs chart syntax validation/rendering only. These checks **do not**
+CI validates chart syntax and verifies that Prometheus scrapes exactly the two
+Spring Boot management endpoints (port 9090) and the three worker metrics
+Services (port 8000). An offline rendered-manifest validator checks metrics
+Services, non-root worker settings and private-by-default Routes.
+
+APIs and Grafana have **no public OpenShift Routes by default**. If access is
+needed in a trusted lab, set `apps.routes.enabled=true` and
+`monitoring.routes.grafana=true`; add authentication and ingress policy
+before using these options in an untrusted environment. Prometheus never
+receives a public Route; use `oc port-forward svc/prometheus 9090:9090`.
+
+CI performs syntax and configuration validation only. These checks **do not**
 prove that the manifests work in an OpenShift cluster. The chart references
 a laboratory namespace, image registry, storage class, and an external
 `iot-central-secret`; configure all dependencies deliberately before
