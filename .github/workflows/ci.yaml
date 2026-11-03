@@ -106,9 +106,9 @@ jobs:
           helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml \
             --set apps.routes.enabled=true --set monitoring.routes.grafana=true > /tmp/iot-optional-routes.yaml
           python3 scripts/verify-helm.py /tmp/iot-optional-routes.yaml --routes-enabled
-          helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml \\
+          helm template iot-analytics iot-helm -f iot-helm/values-dev.yaml \
             -f /tmp/iot-release-values.json > /tmp/iot-immutable-release.yaml
-          python3 scripts/verify-helm.py /tmp/iot-immutable-release.yaml \\
+          python3 scripts/verify-helm.py /tmp/iot-immutable-release.yaml \
             --release-manifest delivery/fixtures/release.test.json
 
   database:
