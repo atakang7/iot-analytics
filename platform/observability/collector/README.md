@@ -21,7 +21,8 @@ bash platform/observability/bin/up
 
 | Var | Default | What |
 | --- | --- | --- |
-| `LOKI_URL` | Set by Kubernetes manifest | Loki push endpoint |
+| `LOKI_PUSH_URL` | `http://loki.iot-observability.svc.cluster.local:3100/loki/api/v1/push` | Loki push endpoint |
+| `POD_NAMESPACE` | `iot-validation` | Source namespace |
 
 ## Interfaces
 
