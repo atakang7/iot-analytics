@@ -24,3 +24,8 @@ removed entirely. There is no cluster deployment or implicit promotion from CI.
 
 For failures, inspect the named job, logs and any failing test. Never treat
 a skipped job or manually emitted status as application proof.
+
+The Kubernetes runner also deploys an isolated monitoring stack
+(Prometheus, Alertmanager, Loki, Grafana, namespace-scoped log forwarder)
+and validates five live scrapes, two alert rules, data sources and actual
+worker log delivery to Loki.
