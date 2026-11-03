@@ -1,11 +1,8 @@
-import pytest
-import sys
 import os
-sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
-from common.models import Threshold
 import sys
-sys.path.insert(0, "..")
+
+sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from common.models import Threshold
 
@@ -21,13 +18,12 @@ class TestThresholdCheck:
         result = t.check(45)
         assert result == ("threshold_breach", "critical")
 
-    # stream-worker/test_main.py - change critical_low to non-zero
     def test_critical_low_breach(self):
         t = Threshold(
             sensor_type="temperature",
             device_type="hvac",
             warning_low=10, warning_high=30,
-            critical_low=5, critical_high=40  # changed from 0 to 5
+            critical_low=5, critical_high=40
         )
         result = t.check(-5)
         assert result == ("threshold_breach", "critical")

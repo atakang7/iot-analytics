@@ -1,9 +1,11 @@
-import pytest
-import sys
 import os
+import sys
+
+import pytest
+
 sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
-from common.models import Threshold
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 from main import extract_value, compute_kpis
 
 
@@ -16,11 +18,11 @@ class TestExtractValue:
 
     def test_extract_vibration_rms(self):
         result = extract_value({"x": 3, "y": 4, "z": 0}, "vibration")
-        assert result == 5.0  # 3-4-5 triangle
+        assert result == 5.0
 
     def test_extract_vibration_all_axes(self):
         result = extract_value({"x": 1, "y": 2, "z": 2}, "vibration")
-        assert result == 3.0  # sqrt(1+4+4)
+        assert result == 3.0
 
     def test_extract_missing_value_key(self):
         result = extract_value({"x": 1}, "temperature")
@@ -48,7 +50,7 @@ class TestComputeKpis:
         assert kpis["min"] == 42
         assert kpis["max"] == 42
         assert kpis["count"] == 1
-        assert "std_dev" not in kpis  # needs 2+ values
+        assert "std_dev" not in kpis
 
     def test_std_dev(self):
         values = [2, 4, 4, 4, 5, 5, 7, 9]

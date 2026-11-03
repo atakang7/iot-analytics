@@ -1,10 +1,10 @@
-import pytest
-import sys
 import os
-sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
-from common.models import Threshold
+import sys
 from datetime import datetime
+
+sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 from main import parse_alert
 
 class TestParseAlert:
