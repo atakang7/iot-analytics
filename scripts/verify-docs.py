@@ -9,7 +9,13 @@ ROOT = Path(__file__).resolve().parents[1]
 LINK = re.compile(r"!?\[[^\]\n]+\]\(([^)\n]+)\)")
 HEADINGS = re.compile(r"^#{1,3}\s+(.+)$", re.MULTILINE)
 CATEGORIES = ("tutorials", "how-to", "reference", "explanation")
-STYLE = re.compile(r"\b(?:delve|tapestry|pivotal|seamless|groundbreaking)\b", re.I)
+STYLE = re.compile(
+    r"\\b(?:delve|robust|seamless|leverage|comprehensive|powerful|crucial|vital|"
+    r"pivotal|enhance|ensures?|showcase|highlight|underscore|valuable|streamline|"
+    r"cutting-edge|production-grade|battle-tested|effortless|simply|designed to|"
+    r"serves as|features|boasts|offers|additionally|furthermore|moreover|"
+    r"ultimately|tapestry|groundbreaking)\\b", re.I
+)
 
 
 def check_links(root: Path, source: Path, contents: str) -> list[str]:
@@ -36,6 +42,21 @@ def check_style(path: Path, content: str) -> list[str]:
     return errors
 
 
+def check_readme(root: Path, path: Path, content: str) -> list[str]:
+    if path.name != "README.md":
+        return []
+    errors = []
+    limit = 80 if path == root / "README.md" else 60
+    if len(content.splitlines()) > limit:
+        errors.append(f"{path}: exceeds {limit} lines")
+    if path != root / "README.md" and not path.is_relative_to(root / "docs"):
+        depth = len(path.parent.relative_to(root).parts)
+        expected = f"Part of [iot-analytics]({'../' * depth}README.md)."
+        if not content.splitlines() or content.splitlines()[0] != expected:
+            errors.append(f"{path}: first line must be {expected}")
+    return errors
+
+
 def verify(root: Path) -> list[str]:
     errors = []
     required = [
@@ -50,9 +71,6 @@ def verify(root: Path) -> list[str]:
     if errors:
         return errors
 
-    readme = (root / "README.md").read_text(encoding="utf-8")
-    if len(readme.splitlines()) > 120:
-        errors.append("README.md exceeds 120 lines; move detail into docs/")
     agent = (root / "AGENTS.md").read_text(encoding="utf-8")
     if len(agent.splitlines()) > 120:
         errors.append("AGENTS.md exceeds 120 lines; use context pointers")
@@ -69,13 +87,11 @@ def verify(root: Path) -> list[str]:
         if "Status: " not in text or "## Context" not in text or "## Decision" not in text or "## Consequences" not in text:
             errors.append(f"{adr}: missing status, context, decision or consequences")
 
-    checked = [root / x for x in ("README.md", "AGENTS.md", "CONTEXT.md", "GLOSSARY.md")] + docs
-    for path in checked:
+    for path in sorted(root.rglob("*.md")):
         contents = path.read_text(encoding="utf-8")
         errors.extend(check_links(root, path, contents))
-        # Apply prose lint to the curated Diátaxis tree and the four root guides.
-        if path.parent == root or path.parent.name in CATEGORIES or path.parent.name == "adr":
-            errors.extend(check_style(path, contents))
+        errors.extend(check_readme(root, path, contents))
+        errors.extend(check_style(path, contents))
     return errors
 
 
