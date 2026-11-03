@@ -1,30 +1,18 @@
-#!/usr/bin/env python3
-"""
-Stream Worker
-Kafka: iot.telemetry → threshold checks → Kafka: iot.alerts
+"""Threshold, rate-change and stuck-sensor event processor.
 
-Alerts:
-1. Threshold breach - value exceeds configured limits
-2. Rate of change - value changing too fast
-3. Stuck sensor - same value repeated N times
+The source offset is committed only after alert publishing succeeds.
 """
-import sys
-sys.path.insert(0, "/app")
- 
 import uuid
 from collections import defaultdict, deque
 
-from common.config import KAFKA_TELEMETRY_TOPIC, KAFKA_ALERTS_TOPIC
-from common.kafka import KafkaConsumer, KafkaProducer
+from common.config import KAFKA_ALERTS_TOPIC, KAFKA_TELEMETRY_TOPIC, METRICS_PORT
 from common.db import query
-from common.models import Telemetry, Alert, Threshold
-from common.metrics import start_metrics_server, alerts_generated, threshold_checks, processing_errors
+from common.kafka import KafkaConsumer, KafkaProducer
 from common.logger import get_logger
-
+from common.metrics import alerts_generated, processing_errors, start_metrics_server, threshold_checks
+from common.models import Alert, Telemetry, Threshold
 
 log = get_logger("stream-worker")
-
-# Config
 STUCK_COUNT = 5
 RATE_THRESHOLD = 10.0
 
@@ -34,15 +22,16 @@ class StreamProcessor:
         self.thresholds: dict[str, Threshold] = {}
         self.last_value: dict[str, float] = {}
         self.value_history: dict[str, deque] = defaultdict(lambda: deque(maxlen=STUCK_COUNT))
+        self.stuck_reported: set[str] = set()
         self.producer = KafkaProducer()
 
     def load_thresholds(self):
-        log.info("Loading thresholds")
         rows = query("SELECT * FROM thresholds")
         for row in rows:
-            key = row["sensor_type"]
-            if row["device_type"]:
-                key = f"{row['device_type']}:{row['sensor_type']}"
+            key = (
+                f"{row['device_type']}:{row['sensor_type']}"
+                if row["device_type"] else row["sensor_type"]
+            )
             self.thresholds[key] = Threshold(
                 sensor_type=row["sensor_type"],
                 device_type=row["device_type"],
@@ -51,21 +40,22 @@ class StreamProcessor:
                 critical_low=row["critical_low"],
                 critical_high=row["critical_high"],
             )
-        log.info("Loaded thresholds", extra={"extra": {"count": len(self.thresholds)}})
+        log.info("Thresholds loaded", extra={"extra": {"count": len(self.thresholds)}})
 
     def get_threshold(self, device_type: str, sensor_type: str) -> Threshold | None:
         return self.thresholds.get(f"{device_type}:{sensor_type}") or self.thresholds.get(sensor_type)
 
-    def emit_alert(self, telemetry: Telemetry, alert_type: str, severity: str, message: str, value: float, threshold: float = None):
-        log.info("Generating alert", extra={"extra": {
-            "device_id": telemetry.device_id,
-            "alert_type": alert_type,
-            "severity": severity,
-            "value": value,
-            "threshold": threshold
-        }})
+    def emit_alert(
+        self, telemetry: Telemetry, alert_type: str, severity: str,
+        message: str, value: float, threshold: float = None
+    ):
+        # Stable identity across Kafka retries, unlike a random UUID4.
+        identity = ":".join((
+            telemetry.device_id, telemetry.sensor_id, telemetry.timestamp.isoformat(),
+            alert_type, severity,
+        ))
         alert = Alert(
-            alert_id=str(uuid.uuid4()),
+            alert_id=str(uuid.uuid5(uuid.NAMESPACE_URL, identity)),
             device_id=telemetry.device_id,
             device_type=telemetry.device_type,
             alert_type=alert_type,
@@ -73,97 +63,90 @@ class StreamProcessor:
             message=message,
             value=value,
             threshold=threshold,
+            created_at=telemetry.timestamp,
         )
         self.producer.send(KAFKA_ALERTS_TOPIC, alert.to_dict(), key=telemetry.device_id)
         alerts_generated.labels(alert_type=alert_type, severity=severity).inc()
-        
-        log.info("Alert generated", extra={"extra": {
-            "alert_id": alert.alert_id,
-            "device_id": telemetry.device_id,
-            "alert_type": alert_type,
-            "severity": severity,
-            "value": value,
-            "threshold": threshold
-        }})
 
     def process(self, telemetry: Telemetry):
-        log.info("Processing telemetry", extra={"extra": {
-            "device_id": telemetry.device_id,
-            "device_type": telemetry.device_type,
-            "sensor_id": telemetry.sensor_id,
-            "sensor_type": telemetry.sensor_type,
-            "value": telemetry.scalar_value()
-        }})
         key = f"{telemetry.device_id}:{telemetry.sensor_id}"
-        
-        if telemetry.sensor_type == "vibration":
-            value = telemetry.vibration_rms()
-        else:
-            value = telemetry.scalar_value()
-
+        value = (
+            telemetry.vibration_rms()
+            if telemetry.sensor_type == "vibration"
+            else telemetry.scalar_value()
+        )
         if value is None:
             return
 
         threshold = self.get_threshold(telemetry.device_type, telemetry.sensor_type)
         threshold_checks.labels(sensor_type=telemetry.sensor_type).inc()
-
-        # 1. Threshold breach
         if threshold:
             result = threshold.check(value)
             if result:
-                alert_type, severity = result
-                limit = threshold.critical_high or threshold.warning_high or threshold.critical_low or threshold.warning_low
+                _, severity = result
+                # Report the actual boundary breached, including zero.
+                bounds = (
+                    (threshold.critical_high, value > threshold.critical_high)
+                    if threshold.critical_high is not None else (None, False),
+                    (threshold.critical_low, value < threshold.critical_low)
+                    if threshold.critical_low is not None else (None, False),
+                    (threshold.warning_high, value > threshold.warning_high)
+                    if threshold.warning_high is not None else (None, False),
+                    (threshold.warning_low, value < threshold.warning_low)
+                    if threshold.warning_low is not None else (None, False),
+                )
+                limit = next(bound for bound, breached in bounds if breached)
                 self.emit_alert(
-                    telemetry, alert_type, severity,
-                    f"{telemetry.sensor_type} value {value:.2f} exceeds limit {limit}",
-                    value, limit
+                    telemetry, "threshold_breach", severity,
+                    f"{telemetry.sensor_type} value {value:.2f} breached limit {limit}",
+                    value, limit,
                 )
 
-        # 2. Rate of change
-        if key in self.last_value:
-            delta = abs(value - self.last_value[key])
+        previous = self.last_value.get(key)
+        if previous is not None:
+            delta = abs(value - previous)
             if delta > RATE_THRESHOLD:
                 self.emit_alert(
                     telemetry, "rapid_change", "warning",
                     f"{telemetry.sensor_type} changed by {delta:.2f} in one reading",
-                    value, RATE_THRESHOLD
+                    value, RATE_THRESHOLD,
                 )
 
-        # 3. Stuck sensor
         history = self.value_history[key]
         history.append(value)
-        if len(history) == STUCK_COUNT and len(set(history)) == 1:
+        stuck = len(history) == STUCK_COUNT and len(set(history)) == 1
+        if stuck and key not in self.stuck_reported:
             self.emit_alert(
                 telemetry, "stuck_sensor", "warning",
-                f"{telemetry.sensor_id} stuck at {value:.2f} for {STUCK_COUNT} readings",
-                value
+                f"{telemetry.sensor_id} unchanged for {STUCK_COUNT} readings", value,
             )
-
+            self.stuck_reported.add(key)
+        elif not stuck:
+            self.stuck_reported.discard(key)
         self.last_value[key] = value
+
+    def close(self):
+        self.producer.close()
 
 
 def main():
-    log.info("Starting stream-workera")
-    start_metrics_server(8000)
-
+    start_metrics_server(METRICS_PORT)
     processor = StreamProcessor()
     processor.load_thresholds()
-
-    consumer = KafkaConsumer(
-        topic=KAFKA_TELEMETRY_TOPIC,
-        group_id="stream-worker"
-    )
-    log.info("Listening", extra={"extra": {"topic": KAFKA_TELEMETRY_TOPIC}})
-
-    for msg in consumer:
-        try:
-            telemetry = Telemetry.from_dict(msg)
-            processor.process(telemetry)
-        except Exception as e:
-            log.exception("Error processing message")
-            processing_errors.labels(worker="stream", error_type=type(e).__name__).inc()
+    consumer = KafkaConsumer(KAFKA_TELEMETRY_TOPIC, group_id="stream-worker")
+    try:
+        for message in consumer:
+            try:
+                processor.process(Telemetry.from_dict(message))
+                consumer.commit()
+            except Exception as exc:
+                processing_errors.labels(worker="stream", error_type=type(exc).__name__).inc()
+                log.exception("Message failed before offset commit")
+                raise
+    finally:
+        consumer.close()
+        processor.close()
 
 
 if __name__ == "__main__":
     main()
-

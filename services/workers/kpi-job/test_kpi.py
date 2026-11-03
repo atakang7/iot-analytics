@@ -71,8 +71,55 @@ class TestComputeKpis:
         
         assert kpis["rate_of_change"] == 15  # 35 - 20
 
-    def test_power_energy(self):
+    def test_power_samples_are_not_mislabeled_as_energy(self):
         values = [100, 150, 200]
         kpis = compute_kpis(values, "power")
         
-        assert kpis["energy"] == 450
+        assert kpis["sum"] == 450
+        assert "energy" not in kpis
+
+def test_empty_window_advances_watermark_atomically(monkeypatch):
+    from datetime import datetime, timezone
+    import main
+
+    class Cursor:
+        statements = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def execute(self, statement, params):
+            self.statements.append((statement, params))
+
+        def fetchone(self):
+            return {"last_processed_at": datetime(2026, 11, 3, 10, 0, tzinfo=timezone.utc)}
+
+        def fetchall(self):
+            return []
+
+    class Connection:
+        committed = 0
+        rolled_back = 0
+        closed = False
+        cur = Cursor()
+
+        def cursor(self, **_):
+            return self.cur
+
+        def commit(self):
+            self.committed += 1
+
+        def rollback(self):
+            self.rolled_back += 1
+
+        def close(self):
+            self.closed = True
+
+    conn = Connection()
+    monkeypatch.setattr(main, "get_connection", lambda: conn)
+    assert main.run_job(now=datetime(2026, 11, 3, 10, 7, tzinfo=timezone.utc)) == 0
+    assert conn.committed == 1 and conn.rolled_back == 0 and conn.closed
+    assert any("UPDATE job_watermarks" in statement for statement, _ in conn.cur.statements)

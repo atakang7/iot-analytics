@@ -83,3 +83,38 @@ class TestThresholdCheck:
         # Exactly at threshold - no breach (uses >)
         assert t.check(80) is None
         assert t.check(80.1) == ("threshold_breach", "warning")
+
+def test_zero_is_a_valid_critical_boundary():
+    threshold = Threshold(
+        sensor_type="temperature", device_type=None,
+        warning_low=5.0, warning_high=70.0,
+        critical_low=0.0, critical_high=85.0,
+    )
+    assert threshold.check(-0.5) == ("threshold_breach", "critical")
+    assert threshold.check(2.0) == ("threshold_breach", "warning")
+
+
+def test_alert_id_is_stable_across_replays(monkeypatch):
+    import main
+    from common.models import Telemetry
+
+    class Producer:
+        messages = []
+
+        def send(self, topic, value, key):
+            self.messages.append(value)
+
+        def close(self):
+            pass
+
+    producer = Producer()
+    monkeypatch.setattr(main, "KafkaProducer", lambda: producer)
+    processor = main.StreamProcessor()
+    reading = Telemetry.from_dict({
+        "deviceId": "d1", "deviceType": "motor", "sensorId": "temp-1",
+        "sensorType": "temperature", "timestamp": "2026-11-03T10:30:00Z",
+        "unit": "celsius", "value": {"value": 90.0},
+    })
+    processor.emit_alert(reading, "threshold_breach", "critical", "over", 90.0, 85.0)
+    processor.emit_alert(reading, "threshold_breach", "critical", "over", 90.0, 85.0)
+    assert producer.messages[0]["alertId"] == producer.messages[1]["alertId"]
