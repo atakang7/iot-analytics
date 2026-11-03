@@ -26,7 +26,7 @@ Kafka topic: `iot.telemetry`. Message key: `deviceId`.
 | `unit` | Producer-supplied measurement unit |
 | `value` | Object containing the reading payload |
 
-For scalar sensors, workers expect a numeric `value.value`. For `vibration`, the worker calculates a magnitude from `x`, `y` and `z`, treating omitted axes as zero. Non-finite numeric values fail worker validation. The HTTP producer does not yet enforce these full sensor-specific rules.
+Scalar sensors require a finite JSON number at `value.value`. Vibration requires at least one of `x`, `y` or `z`, with finite JSON numbers on all supplied axes. Omitted axes count as zero. The API and Python workers reject numeric strings, booleans, null and non-finite measurements. Source and sensor fields have a 128-character limit; units have a 64-character limit. See [the contract](../../contracts/telemetry/README.md).
 
 A stored sample is unique by `(device_id, sensor_id, time)`. Sending a different value with the same identity will not overwrite the first sample.
 
