@@ -33,6 +33,7 @@ make smoke
 | Path | What it is |
 | --- | --- |
 | [services/](services/README.md) | Java APIs, Python workers and Compose |
+| [contracts/telemetry/](contracts/telemetry/README.md) | Shared HTTP and Kafka reading contract |
 | [iot-helm/](iot-helm/README.md) | OpenShift lab and application charts |
 | [infra/kind/](infra/kind/README.md) | Disposable application cluster |
 | [infra/cluster/](infra/cluster/README.md) | Three-node Kubernetes foundation test |
