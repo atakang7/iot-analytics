@@ -28,7 +28,7 @@ jobs:
       - name: Validate operational shell scripts and load test
         run: |
           set -euo pipefail
-          for script in scripts/*.sh simulator/*.sh infra/kind/bin/* validation/kind/*.sh; do bash -n "$script"; done
+          for script in scripts/*.sh simulator/*.sh infra/kind/bin/* validation/kind/*.sh policies/bin/*; do bash -n "$script"; done
           python -m compileall -q system-test
           python -m unittest discover -s system-test -p 'test_*.py' -v
       - name: Test every worker
@@ -211,8 +211,10 @@ jobs:
           kubectl get pods -A -o wide || true
           kubectl -n iot-validation describe pods || true
           kubectl -n iot-validation get events --sort-by=.metadata.creationTimestamp || true
-          kubectl -n iot-validation logs deployment/kafka --tail=120 || true
-          kubectl -n iot-validation logs deployment/timescaledb --tail=120 || true
+          kubectl -n iot-dependencies get pods,services -o wide || true
+          kubectl -n iot-dependencies get events --sort-by=.metadata.creationTimestamp || true
+          kubectl -n iot-dependencies logs deployment/kafka --tail=120 || true
+          kubectl -n iot-dependencies logs deployment/timescaledb --tail=120 || true
           for name in ingestion device-registry telemetry-worker stream-worker alert-worker; do
             kubectl -n iot-validation logs "deployment/$name" --all-containers --tail=150 || true
           done

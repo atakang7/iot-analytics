@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: iot-policy-denied-resources
+spec:
+  containers:
+    - name: probe
+      image: busybox:1.36
+      command: ["true"]
+      securityContext:
+        runAsUser: 10001
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]

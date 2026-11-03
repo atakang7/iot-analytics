@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# A validator does not change cluster state; all test Pods are server dry-runs.
+set -Eeuo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+NAMESPACE="${1:?usage: smoke NAMESPACE}"
+[[ "$NAMESPACE" != "default" && "$NAMESPACE" != "kube-system" ]] || {
+  echo "Refusing an unscoped namespace" >&2; exit 1;
+}
+[[ "$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.labels.iot-policy}')" == "enforce" ]] || {
+  echo "Namespace $NAMESPACE has no iot-policy=enforce label" >&2; exit 1;
+}
+
+kubectl -n "$NAMESPACE" create --dry-run=server \
+  -f "$ROOT/policies/fixtures/allowed.yaml" >/dev/null
+echo "PASS: compliant Pod accepted at Kubernetes admission"
+
+deny() {
+  local fixture="$1"
+  local expected="$2"
+  local output
+  for attempt in $(seq 1 30); do
+    if output="$(kubectl -n "$NAMESPACE" create --dry-run=server -f "$fixture" 2>&1)"; then
+      sleep 1
+      continue
+    fi
+    if grep -Fq "$expected" <<<"$output"; then
+      echo "PASS: Kubernetes admission rejected $(basename "$fixture")"
+      return
+    fi
+    printf 'Unexpected admission error: %s\n' "$output" >&2
+    return 1
+  done
+  echo "FAIL: a denied Pod was admitted; policy has not enforced" >&2
+  return 1
+}
+deny "$ROOT/policies/fixtures/denied-resources.yaml" \
+  "IoT workloads must declare CPU and memory requests and limits"
+deny "$ROOT/policies/fixtures/denied-privilege.yaml" \
+  "IoT workloads require non-root, read-only, no escalation and dropped capabilities"

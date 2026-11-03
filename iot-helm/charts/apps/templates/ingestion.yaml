@@ -43,15 +43,29 @@ spec:
     metadata:
       labels:
         app: ingestion
+        app.kubernetes.io/part-of: iot-analytics
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9090"
         prometheus.io/path: "/actuator/prometheus"
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: ingestion
           image: {{ include "iot.image" (dict "name" "ingestion" "values" .Values) | quote }}
           imagePullPolicy: {{ if eq .Values.imageMode "kind" }}Never{{ else if eq .Values.imageMode "release" }}IfNotPresent{{ else }}Always{{ end }}
+          securityContext:
+            runAsUser: 10001
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: runtime-tmp
+              mountPath: /tmp
           ports:
             - containerPort: 8081
               name: http
@@ -59,8 +73,8 @@ spec:
               name: management
           env:
             - name: KAFKA_BOOTSTRAP
-              value: kafka:9092
-            - name: JAVA_OPTS
+              value: {{ .Values.kafkaBootstrap | quote }}
+            - name: JAVA_TOOL_OPTIONS
               value: "-Xms256m -Xmx512m"
           resources:
             requests:
@@ -81,6 +95,10 @@ spec:
               port: 9090
             initialDelaySeconds: 30
             periodSeconds: 5
+      volumes:
+        - name: runtime-tmp
+          emptyDir:
+            sizeLimit: 128Mi
 ---
 apiVersion: v1
 kind: Service

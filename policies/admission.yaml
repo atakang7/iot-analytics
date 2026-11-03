@@ -1,0 +1,35 @@
+# Scoped native admission: deny malformed application Pods at the actual API server.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: iot-container-boundary
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  variables:
+    - name: allContainers
+      expression: "has(object.spec.initContainers) ? object.spec.containers + object.spec.initContainers : object.spec.containers"
+  validations:
+    - expression: "variables.allContainers.all(c, has(c.resources) && has(c.resources.requests) && has(c.resources.limits) && 'cpu' in c.resources.requests && 'memory' in c.resources.requests && 'cpu' in c.resources.limits && 'memory' in c.resources.limits)"
+      message: "IoT workloads must declare CPU and memory requests and limits"
+      reason: Forbidden
+    - expression: "variables.allContainers.all(c, has(c.securityContext) && has(c.securityContext.runAsNonRoot) && c.securityContext.runAsNonRoot && has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation && has(c.securityContext.readOnlyRootFilesystem) && c.securityContext.readOnlyRootFilesystem && has(c.securityContext.capabilities) && has(c.securityContext.capabilities.drop) && 'ALL' in c.securityContext.capabilities.drop)"
+      message: "IoT workloads require non-root, read-only, no escalation and dropped capabilities"
+      reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: iot-container-boundary
+spec:
+  policyName: iot-container-boundary
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        iot-policy: enforce

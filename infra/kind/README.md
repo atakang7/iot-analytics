@@ -3,7 +3,8 @@
 This is the **real cluster integration layer** for IoT Analytics, mirroring
 the golden platform's distinction between infrastructure and validation.
 It provisions an isolated, single-node kind cluster (pinned Kubernetes node
-image) with TimescaleDB and KRaft Kafka, loads six application images, and
+image), puts Kafka and TimescaleDB in `iot-dependencies`, loads six application
+images into a separate `iot-validation` namespace, and
 deploys the **portable application-only Helm chart**.
 
 ```bash
@@ -24,3 +25,9 @@ public ingress or production cluster access are required.
 Real release mode still requires signed GHCR image digests and omits the
 in-cluster BuildConfigs. Dependencies here are disposable test infrastructure,
 not HA/secure production dependencies.
+
+The application namespace is labeled `iot-policy=enforce` and all Pods
+must pass [the native admission policy](../../policies/README.md). The CI
+cluster uses Kubernetes API **server-side** allow/deny smoke tests before
+it deploys the workloads. Stateful dependencies remain isolated because they
+require a distinct filesystem/process security profile.

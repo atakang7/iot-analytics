@@ -5,6 +5,8 @@ set -Eeuo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CLUSTER="${IOT_KIND_CLUSTER:-iot-analytics}"
 NAMESPACE="${IOT_KIND_NAMESPACE:-iot-validation}"
+DEPS_NAMESPACE="iot-dependencies"
+[[ "$NAMESPACE" != "$DEPS_NAMESPACE" ]] || { echo "Application and dependency namespaces must differ" >&2; exit 1; }
 NODE_IMAGE="kindest/node:v1.34.0@sha256:7416a61b42b1662ca6ca89f02028ac133a309a2a30ba309614e8ec94d976dc5a"
 
 for command in docker kind kubectl helm openssl; do
@@ -19,20 +21,26 @@ kind create cluster --name "$CLUSTER" --image "$NODE_IMAGE" --wait 180s
 kubectl config use-context "kind-$CLUSTER" >/dev/null
 [[ "$(kubectl config current-context)" == "kind-$CLUSTER" ]] || exit 1
 kubectl create namespace "$NAMESPACE"
+kubectl create namespace "$DEPS_NAMESPACE"
+kubectl label namespace "$NAMESPACE" iot-policy=enforce
+kubectl apply -f "$ROOT/policies/admission.yaml"
+bash "$ROOT/policies/bin/smoke" "$NAMESPACE"
 
 password="$(openssl rand -hex 32)"
-kubectl -n "$NAMESPACE" create secret generic iot-central-secret \
-  --from-literal=timescaledb_db=iot \
-  --from-literal=timescaledb_user=iot \
-  --from-literal="timescaledb_password=$password"
+for ns in "$NAMESPACE" "$DEPS_NAMESPACE"; do
+  kubectl -n "$ns" create secret generic iot-central-secret \
+    --from-literal=timescaledb_db=iot \
+    --from-literal=timescaledb_user=iot \
+    --from-literal="timescaledb_password=$password"
+done
 unset password
-kubectl -n "$NAMESPACE" create configmap iot-schema \
+kubectl -n "$DEPS_NAMESPACE" create configmap iot-schema \
   --from-file="schema.sql=$ROOT/services/schema.sql"
-kubectl -n "$NAMESPACE" apply -f "$ROOT/infra/kind/dependencies.yaml"
+kubectl -n "$DEPS_NAMESPACE" apply -f "$ROOT/infra/kind/dependencies.yaml"
 
 echo "Waiting for the real TimescaleDB and KRaft Kafka Pods..."
-kubectl -n "$NAMESPACE" rollout status deployment/timescaledb --timeout=300s
-kubectl -n "$NAMESPACE" rollout status deployment/kafka --timeout=300s
+kubectl -n "$DEPS_NAMESPACE" rollout status deployment/timescaledb --timeout=300s
+kubectl -n "$DEPS_NAMESPACE" rollout status deployment/kafka --timeout=300s
 
 for name in ingestion device-registry; do
   docker build -t "iot/$name:kind" "$ROOT/services/$name"
@@ -47,6 +55,9 @@ helm dependency build "$ROOT/iot-helm"
 helm upgrade --install iot-analytics "$ROOT/iot-helm" \
   --namespace "$NAMESPACE" \
   --set infra.enabled=false --set monitoring.enabled=false \
-  --set apps.imageMode=kind --wait --timeout 10m
+  --set apps.imageMode=kind \
+  --set "apps.dbHost=timescaledb.$DEPS_NAMESPACE.svc.cluster.local" \
+  --set "apps.kafkaBootstrap=kafka.$DEPS_NAMESPACE.svc.cluster.local:9092" \
+  --wait --timeout 10m
 
 echo "PASS: disposable Kubernetes runtime has all five long-running IoT apps"
