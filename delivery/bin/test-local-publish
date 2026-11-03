@@ -39,7 +39,8 @@ echo "PASS: scanned exact OCI bytes reached the registry unchanged"
 export COSIGN_PASSWORD=""
 cosign generate-key-pair --output-key-prefix "$work/trusted"
 cosign sign --yes --key "$work/trusted.key" \
-  --allow-http-registry --tlog-upload=false "$image@$digest"
+  --allow-http-registry --new-bundle-format=false \
+  --use-signing-config=false --tlog-upload=false "$image@$digest"
 cosign verify --key "$work/trusted.pub" \
   --allow-http-registry --insecure-ignore-tlog "$image@$digest" >/dev/null
 
