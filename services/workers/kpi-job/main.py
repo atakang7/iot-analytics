@@ -157,7 +157,7 @@ def main():
         try:
             push_metrics(JOB_NAME)
         except Exception:
-            log.warning("Pushgateway unavailable; database results are committed", exc_info=True)
+            log.warning("Pushgateway unavailable; database results are committed")
     except Exception:
         log.exception("KPI job failed")
         raise

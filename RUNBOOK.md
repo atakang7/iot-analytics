@@ -5,7 +5,9 @@ Commands below assume the repository root, Docker Compose v2 and Bash.
 ## Start from a NEW volume
 
 ```bash
-[ -e services/.env ] || sed "s/^IOT_DB_PASSWORD=.*/IOT_DB_PASSWORD=$(openssl rand -hex 32)/" services/.env.example > services/.env
+cp services/.env.example services/.env
+# This is for a fresh environment only; keep the old value on restarts.
+printf 'IOT_DB_PASSWORD=%s\n' "$(openssl rand -hex 32)" > services/.env
 chmod 600 services/.env
 
 docker compose -f services/docker-compose.yml up -d --build
@@ -13,7 +15,8 @@ docker compose -f services/docker-compose.yml ps
 bash scripts/smoke-local.sh
 ```
 
-Only create `services/.env` if it does not exist. **Never commit the password**. For normal restarts, keep
+Only copy the `.env.example` file if you have not already configured
+`services/.env`. **Never commit the password**. For normal restarts, keep
 the existing value: PostgreSQL role passwords persist in its volume.
 
 ## Verify

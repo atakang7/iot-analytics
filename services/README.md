@@ -6,7 +6,7 @@ Local run: [../README.md](../README.md) · operational commands:
 | Component | Container | Interface |
 | --- | --- | --- |
 | device-registry | Spring Boot / Java 21 | localhost:8080 |
-| ingestion | Spring Boot / Java 21 | localhost:8081 |
+| ingestion | Spring Boot / Java 17 | localhost:8081 |
 | kafka | Single-node Apache Kafka | internal:9092 |
 | timescaledb | TimescaleDB on PostgreSQL | localhost:5432 |
 | telemetry-worker | Python 3.11 | Kafka → telemetry |

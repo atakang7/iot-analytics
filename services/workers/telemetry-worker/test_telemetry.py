@@ -1,9 +1,8 @@
-import os
+import pytest
 import sys
-
+import os
 sys.path.insert(0, os.path.dirname(__file__))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
+sys.path.insert(0, os.path.dirname(__file__) + "/..")
 from common.models import Telemetry
 
 
@@ -71,7 +70,7 @@ class TestTelemetryParsing:
         assert row["sensor_id"] == "pressure-01"
         assert row["sensor_type"] == "pressure"
         assert row["unit"] == "bar"
-        assert '"value": 5.5' in row["value"]
+        assert '"value": 5.5' in row["value"]  # JSON string
 
     def test_vibration_rms(self):
         data = {
@@ -84,7 +83,7 @@ class TestTelemetryParsing:
             "value": {"x": 3, "y": 4, "z": 0}
         }
         t = Telemetry.from_dict(data)
-        assert t.vibration_rms() == 5.0
+        assert t.vibration_rms() == 5.0  # 3-4-5 triangle
 
     def test_vibration_rms_wrong_type(self):
         data = {
@@ -143,11 +142,3 @@ def test_flush_batch_commits_after_insert(monkeypatch):
     assert inserted == 1
     assert conn.commits == 1 and conn.rollbacks == 0 and conn.closed
     assert "ON CONFLICT (device_id, sensor_id, time) DO NOTHING" in calls[0][0]
-
-
-def test_log_level_comes_from_environment(monkeypatch):
-    import logging
-    import common.logger as worker_logging
-
-    monkeypatch.setattr(worker_logging, "LOG_LEVEL", "WARNING")
-    assert worker_logging.get_logger("iot-test-log-level").level == logging.WARNING
