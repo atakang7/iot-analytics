@@ -135,3 +135,20 @@ def test_kafka_consumer_waits_on_idle_topic(monkeypatch):
     assert captured["enable_auto_commit"] is False
     # A zero consumer timeout exits an idle stream and causes a restart storm.
     assert "consumer_timeout_ms" not in captured
+
+
+def test_kafka_producer_bounds_broker_wait(monkeypatch):
+    import common.kafka as transport
+
+    options = {}
+
+    class StubProducer:
+        def __init__(self, **kwargs):
+            options.update(kwargs)
+
+    monkeypatch.setattr(transport, "_KafkaProducer", StubProducer)
+    transport.KafkaProducer()
+
+    assert options["acks"] == "all"
+    assert options["max_block_ms"] == 15000
+    assert options["request_timeout_ms"] == 10000
