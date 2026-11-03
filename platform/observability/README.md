@@ -1,36 +1,39 @@
-# Verified observability path
+Part of [iot-analytics](../../README.md).
 
-The application and observability namespaces are separate:
+# observability
+
+Private Prometheus, Alertmanager, Grafana and Loki stack for the Kind test environment.
 
 ```text
-Spring Actuator + Python /metrics  -> Prometheus -> alert rules -> Alertmanager
-application container stdout       -> scoped Pod-log collector -> Loki
-                                                       |
-                                                   Grafana
++------------------+  logs  +---------------+  HTTP  +------+
+| telemetry-worker | -----> | log-collector | -----> | Loki |
++------------------+        +---------------+        +------+
 ```
 
-`bin/up` provisions private Prometheus, Loki, Alertmanager and Grafana
-inside `iot-observability` and runs a small log collector inside
-`iot-validation`. Only the collector has namespace-local Pod/log read
-permissions; it has **no cluster role, hostPath mount or secret permissions**.
-All dashboards use the repository's existing IoT Grafana JSON.
-
-The observation chain is exercised in CI against real Kubernetes pods:
-Prometheus must scrape all five application targets, load the alert
-rules and reach Alertmanager; Grafana must serve both provisioned data
-sources; Loki must contain actual streamed worker logs.
+## Run
 
 ```bash
 make kind-up
-bash validation/kind/e2e.sh
-bash platform/observability/bin/up
-bash validation/observability/smoke.sh
+make kind-smoke
+make observability-up
+make observability-smoke
 make kind-down
 ```
 
-Every component runs only on the named disposable kind cluster, is private
-to the cluster, and has bounded resources. Grafana has a random generated
-admin password; it is not in Git. The Loki log collector polls the
-namespaced Pod API and is best-effort, **not an audit-grade log archive**.
-Backends use ephemeral disks, Alertmanager has a lab sink (no real pager),
-and this is not a production monitoring installation.
+## Test
+
+```bash
+(cd platform/observability/collector && python3 -m unittest discover -p 'test_*.py' -v)
+```
+
+## Config
+
+| Path | What |
+| --- | --- |
+| `config/prometheus.yml` | Scrape targets |
+| `config/rules.yml` | Alert rules |
+| `config/loki.yml` | Loki storage and listener |
+
+## Interfaces
+
+`bin/up` creates `iot-observability` and deploys [collector](collector/README.md). [Live tests](../../validation/observability/README.md) check five application scrapes, dashboards and log arrival. Storage and alert sink are temporary.
