@@ -1,79 +1,35 @@
-# Performance Tools
+# Bounded performance check
 
-Scripts to test, monitor, and optimize the IoT pipeline:
+The old scripts used an obsolete JSON contract, assumed cluster tooling and
+printed unverified throughput targets. They have been retired.
 
-```
-ingestion → kafka → telemetry-worker → timescaledb
-```
-
-## Quick Start
+Use the single, measurable local HTTP benchmark:
 
 ```bash
-# Check current status
-./status.sh
-
-# Run benchmark (1000 messages)
-./benchmark.sh 1000 10
-
-# Live monitoring
-./monitor.sh
-
-# Full performance test
-./performance-test.sh 60 1000
-
-# Auto-tune to target rate
-./auto-tune.sh 500
+docker compose -f services/docker-compose.yml up -d --build
+python3 system-test/load.py --count 100 --concurrency 5
 ```
 
-## Scripts
+This reports actual HTTP 202 acknowledgements, response-status totals,
+wall-clock throughput and p50/p95 acknowledgement latency. **It does not
+measure end-to-end database persistence** (the ordinary integration smoke
+test verifies persistence).
 
-| Script | Purpose |
-|--------|---------|
-| `status.sh` | One-shot status check |
-| `benchmark.sh` | Send N messages, measure throughput |
-| `monitor.sh` | Live dashboard |
-| `performance-test.sh` | Full analysis with recommendations |
-| `auto-tune.sh` | Automatically scale to meet target |
+Safety properties:
 
-## Bottleneck Guide
+- Defaults to loopback only. A remote URL needs explicit `--allow-remote`
+  and HTTPS. Never point a load test at a system you do not own.
+- Caps each invocation at 10,000 requests and concurrency at 64.
+- Creates a fresh synthetic device identity per run and unique event timestamps.
+- Does not change deployment replica counts, delete data or write bogus
+  success statuses. Exits nonzero if any request is not accepted.
 
-| Symptom | Bottleneck | Fix |
-|---------|------------|-----|
-| High Kafka lag | telemetry-worker | Scale worker |
-| HTTP errors | ingestion | Scale ingestion |
-| Slow inserts | timescaledb | Batch size, indexes |
-| Low throughput | Multiple | Scale both + batch |
-
-## Scaling Commands
+Run the offline tests with:
 
 ```bash
-# Scale telemetry worker (most common)
-oc scale deploy/telemetry-worker --replicas=3
-
-# Scale ingestion
-oc scale deploy/ingestion --replicas=2
-
-# Check lag
-oc exec deploy/kafka -- bin/kafka-consumer-groups.sh \
-  --bootstrap-server localhost:9092 \
-  --group telemetry-worker --describe
-
-# Watch DB count
-watch -n1 'oc exec deploy/timescaledb -- psql -U iot -d iot -c "SELECT COUNT(*) FROM telemetry;"'
+python3 -m unittest discover -s system-test -p 'test_*.py' -v
 ```
 
-## Expected Performance
-
-| Config | Throughput |
-|--------|------------|
-| 1 ingestion, 1 worker | ~100 msg/sec |
-| 1 ingestion, 2 workers | ~200 msg/sec |
-| 2 ingestion, 3 workers | ~500 msg/sec |
-| 2 ingestion, 5 workers + batching | ~1000+ msg/sec |
-
-## Tuning Tips
-
-1. **Worker batching** - Ensure telemetry-worker batches inserts (100 per commit)
-2. **DB indexes** - TimescaleDB hypertable with time index
-3. **Kafka partitions** - More partitions = more parallel consumers
-4. **Connection pooling** - Reuse DB connections
+The GitHub-hosted CI runs the offline checks and a short **25-event** test
+against actual ingestion inside the full-stack smoke job. These short CI
+runs are correctness checks, not a performance SLA or throughput claim.
